@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Automação de issues</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+:root{--ink:#182235;--muted:#748197;--line:#e6eaf0;--blue:#3157d5;--paper:#fff;--bg:#f6f8fb;--teal:#168d83}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px "DM Sans",sans-serif}button,input,textarea,select{font:inherit}[hidden]{display:none!important}.top{height:68px;background:white;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(calc((100vw - 1160px)/2),24px)}.brand{font:800 19px Manrope,sans-serif;display:flex;align-items:center;gap:10px}.logo{width:34px;height:34px;border-radius:11px;background:linear-gradient(145deg,#4772f1,#2949b9);color:white;display:grid;place-items:center}.topnote{color:var(--muted);font-size:12px}main{max-width:1160px;margin:34px auto;padding:0 22px 60px}.crumb{font-size:12px;color:#929daf;margin-bottom:18px}.crumb span{padding:0 8px;color:#c4ccd6}.hero{margin-bottom:25px}.eyebrow{color:var(--blue);font-size:10px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;margin-bottom:8px}.hero h1{font:800 28px Manrope,sans-serif;letter-spacing:-.7px;margin:0 0 6px}.hero p{color:var(--muted);margin:0}.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}.card{background:white;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px #20304a0b}.form{padding:25px}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #edf0f4;padding-bottom:17px;margin-bottom:20px}.head h2{font:700 15px Manrope,sans-serif;margin:0}.hint{color:#98a2b1;font-size:11px}.star{color:#dc6670}.assist{border:1px solid #e4eaff;background:#f7f8ff;border-radius:11px;padding:15px;margin-bottom:22px}.assist-title{font:700 12px Manrope,sans-serif;margin:0 0 8px}.assist-title span{display:block;color:#8995aa;font:400 11px "DM Sans";margin-top:3px}label{display:block;font-size:12px;font-weight:600;color:#3b485d;margin:0 0 7px}input,textarea,select{width:100%;border:1px solid #dfe4ec;border-radius:8px;padding:10px 11px;color:var(--ink);outline:0;background:#fff}input,select{height:39px}textarea{min-height:76px;line-height:1.5;resize:vertical}select{cursor:pointer}input:focus,textarea:focus{border-color:#7895ef;box-shadow:0 0 0 3px #3157d515}input::placeholder,textarea::placeholder{color:#a6afbd}.assist textarea{min-height:72px;border-color:#e1e6f0}.assist-bottom{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:9px}.assist-status{font-size:11px;line-height:1.5;margin-top:9px}.assist-status.loading{color:#596b99}.assist-status.success{color:#187b69}.assist-status.error{color:#b34551}.topnote.connected{color:#168d83}.topnote.disconnected{color:#b07a27}.privacy{font-size:10px;color:#8b97a9}.btn{height:36px;border:0;border-radius:8px;padding:0 13px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:6px}.primary{background:var(--blue);color:white}.primary:hover{background:#284ac1}.soft{background:#f0f3f8;color:#46546b}.soft:hover{background:#e8ecf3}.btn:disabled{opacity:.5;cursor:not-allowed}.section{font:700 11px Manrope,sans-serif;letter-spacing:.7px;color:#657187;text-transform:uppercase;display:flex;align-items:center;gap:10px;margin:25px 0 14px}.section:after{content:"";height:1px;background:#edf0f4;flex:1}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}.field.full{grid-column:1/-1}.field textarea{min-height:78px}.field .sm{min-height:60px}.foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #edf0f4;margin-top:22px;padding-top:16px}.actions{display:flex;gap:8px}.side{position:sticky;top:88px}.sidebox{padding:19px}.sidebox h3{font:700 14px Manrope,sans-serif;margin:0 0 5px}.sub{font-size:11px;color:#8d98a9;margin-bottom:14px}.bar{height:5px;border-radius:5px;background:#edf0f5;overflow:hidden;margin-bottom:16px}.bar div{height:100%;width:0;background:linear-gradient(90deg,#3157d5,#36a397);transition:.2s}.list{display:grid;gap:10px}.item{display:flex;align-items:center;gap:8px;color:#8d98a9;font-size:11px}.mark{width:16px;height:16px;border:1px solid #d9dfe8;border-radius:50%;display:grid;place-items:center;font-size:9px}.item.done{color:#4c5b70}.item.done .mark{background:#e6f6f2;border-color:#c5eade;color:var(--teal)}.note,.github{margin-top:12px;border-radius:11px;padding:15px;font-size:10px;line-height:1.55}.note{background:#fffdf7;border:1px solid #f0e8d1;color:#7e7252}.note b{display:block;margin-bottom:4px;color:#685d40}.github{background:white;border:1px solid var(--line)}.gh-title{font-size:12px;font-weight:700}.github p{color:#8b96a7;margin:8px 0 11px}.github button{width:100%}.github label{font-size:11px;margin:8px 0 5px}.github input{height:36px;font-size:11px}.github-help{font-size:10px;color:#8b96a7;line-height:1.45;margin-top:7px}.github-help a{color:#3157d5}.github-connected{font-size:11px;color:#168d83;font-weight:700}.github-feedback{font-size:10px;line-height:1.5;margin-top:8px;color:#59677d}.github-feedback.error{color:#b34551}.github-feedback.success{color:#168d83}.github-result-link{color:#3157d5;font-weight:700}.gh-options{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}.gh-options-title{font-weight:700;font-size:11px;margin:8px 0 5px}.gh-label-list{max-height:150px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:5px}.gh-label{display:flex;align-items:center;gap:7px;padding:4px 2px;font-size:10px;color:#46546b}.gh-label input{width:14px;height:14px;margin:0}.gh-project{margin-top:8px}.ai-questions{display:grid;gap:8px;margin-top:9px}.ai-question{font-size:11px;color:#46546b}.ai-question textarea{min-height:48px;margin-top:4px}.ai-answer-button{justify-self:start}.gh-options select,.gh-options input{font-size:11px}.toast{position:fixed;bottom:20px;left:50%;transform:translate(-50%,15px);opacity:0;pointer-events:none;background:#1e2a3d;color:white;padding:11px 15px;border-radius:8px;transition:.2s;font-size:12px}.toast.show{opacity:1;transform:translate(-50%,0)}@media(max-width:800px){main{margin-top:24px}.layout{grid-template-columns:1fr}.side{position:static;grid-row:1}.list{grid-template-columns:1fr 1fr}.note,.github{display:none}}@media(max-width:560px){.top{padding:0 16px}.topnote{display:none}main{padding:0 13px 40px}.hero h1{font-size:24px}.form{padding:18px 15px}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.list{grid-template-columns:1fr}.assist-bottom{align-items:flex-end}.privacy{max-width:145px}.head .hint{display:none}.foot{align-items:flex-end;gap:8px}.actions{flex-wrap:wrap;justify-content:flex-end}}
+.assist-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.assist-library{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:7px;margin-top:9px}.assist-library select{font-size:11px;height:36px}.saved-narrative-status{font-size:10px;color:#8995aa;margin-top:5px;min-height:14px}@media(max-width:560px){.assist-actions{max-width:190px}.assist-library{grid-template-columns:1fr 1fr}.assist-library select{grid-column:1/-1}}
+</style><style>
+:root{--ink:#19363a;--muted:#70898d;--line:#d6e8ea;--blue:#087f89;--paper:#fff;--bg:#f2f9fa;--teal:#109da5;--accent-soft:#e5f3f5;--accent-line:#c8e6e9}
+body{background:var(--bg);color:var(--ink)}
+.top,.card,.github{background:var(--paper)}
+.top{border-color:var(--line)}
+.logo{background:linear-gradient(145deg,#35c5c8,#07828b);color:#f4feff}
+.assist{border-color:var(--accent-line);background:#edf7f8}
+.assist textarea{border-color:#d5eaec}
+.primary{background:#078b94;color:#fff}
+.primary:hover{background:#066f77}
+.soft{background:#e8f2f3;color:#31575b}
+.soft:hover{background:#d9ebed}
+.section:after,.foot{border-color:var(--line)}
+.bar{background:#e2eff0}
+.bar div{background:linear-gradient(90deg,#0a929a,#43c1c0)}
+.item.done .mark{background:#e1f4f2;border-color:#b8e3df;color:#087f89}
+.note{background:#edf8f8;border-color:#d5ebec;color:#426c70}
+.note b{color:#24565b}
+.github-feedback.success,.github-connected,.topnote.connected{color:#087f70}
+.github-result-link,.github-help a{color:#087f89}
+input:focus,textarea:focus{border-color:#31aeb4;box-shadow:0 0 0 3px #31aeb422}
+.assist-title span,.hint,.sub,.privacy{color:#70898d}
+.template-picker{display:grid;grid-template-columns:160px minmax(0,1fr);align-items:center;gap:8px;margin:0 0 9px}.template-picker label{margin:0}.template-picker select{height:36px;font-size:11px}.template-hint{grid-column:2;color:#70898d;font-size:10px;line-height:1.4;margin-top:-4px}.history-card{padding:16px;margin-top:12px}.history-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.history-head h3{font:700 13px Manrope,sans-serif;margin:0}.history-head .btn{height:30px;padding:0 9px}.issue-history{display:grid;gap:9px;margin-top:10px;max-height:290px;overflow:auto}.history-empty{color:#70898d;font-size:11px;margin:0}.history-entry{border-top:1px solid var(--line);padding-top:8px}.history-entry a{color:#087f89;font-size:11px;font-weight:700;text-decoration:none}.history-entry a:hover{text-decoration:underline}.history-entry small{display:block;color:#70898d;font-size:10px;line-height:1.4;margin-top:3px}@media(max-width:560px){.template-picker{grid-template-columns:1fr}.template-hint{grid-column:1;margin-top:0}.history-card{margin-bottom:12px}}
+</style><style>
+.top{display:flex;justify-content:space-between;align-items:center}.top-actions{display:flex;align-items:center;gap:10px}.top-actions button{border:0;border-radius:7px;padding:8px 11px;background:#e8f2f3;color:#31575b;font-weight:700;cursor:pointer}.auth-screen{max-width:440px;margin:9vh auto 40px;padding:0 16px}.auth-card,.admin-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;box-shadow:0 12px 34px #19363a0c}.auth-card h1{font-size:23px;margin:0 0 8px}.auth-card p{color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 18px}.auth-card label,.admin-card label{display:block;font-size:12px;font-weight:700;margin:12px 0 5px}.auth-card input,.admin-card input,.admin-card select{width:100%;height:40px;border:1px solid var(--line);border-radius:7px;padding:0 10px}.auth-card button,.admin-card button{margin-top:14px;width:100%}.auth-message{min-height:18px;margin-top:10px;color:#b34551;font-size:12px}.admin-overlay{position:fixed;inset:0;background:#10282bd1;z-index:10;display:grid;place-items:center;padding:20px}.admin-overlay[hidden],.auth-screen[hidden],#appMain[hidden]{display:none}.admin-card{max-width:650px;width:100%;max-height:90vh;overflow:auto}.admin-head,.admin-user{display:flex;justify-content:space-between;align-items:center;gap:12px}.admin-head h2{margin:0;font-size:18px}.admin-head button,.admin-user button{width:auto;margin:0}.admin-form{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:16px 0}.admin-form .wide{grid-column:1/-1}.admin-users{display:grid;gap:9px}.admin-user{border-top:1px solid var(--line);padding-top:10px}.admin-user strong{font-size:13px}.admin-user small{display:block;color:var(--muted);font-size:11px;margin-top:3px}.admin-user-actions{display:flex;gap:6px}.admin-user-actions button{font-size:11px;padding:7px 9px}.admin-error{color:#b34551;font-size:12px;margin-top:8px;min-height:16px}@media(max-width:560px){.top-actions{gap:5px}.top-actions button{padding:7px;font-size:10px}.admin-form{grid-template-columns:1fr}.admin-form .wide{grid-column:auto}.admin-user{align-items:flex-start;flex-direction:column}}
+</style></head><body>
+<header class="top"><div class="brand"><div class="logo">✳</div>Automação de issues</div><div class="top-actions"><div class="topnote" id="ollamaStatus">Verificando IA local…</div><span id="authUserLabel" hidden></span><button id="adminButton" type="button" hidden>Gerenciar acessos</button><button id="logoutButton" type="button" hidden>Sair</button></div></header>
+<section class="auth-screen" id="authScreen" hidden><div class="auth-card"><h1 id="authTitle">Entrar</h1><p id="authDescription">Entre com seu usuário e senha para acessar a automação.</p><form id="authForm"><div id="setupKeyWrap" hidden><label for="setupKey">Chave de configuração inicial</label><input id="setupKey" type="password" autocomplete="off"></div><label for="authUsername">Usuário</label><input id="authUsername" required autocomplete="username"><label for="authPassword">Senha</label><input id="authPassword" type="password" required autocomplete="current-password"><button class="btn primary" id="authSubmit" type="submit">Entrar</button><div class="auth-message" id="authMessage" aria-live="polite"></div></form></div></section>
+<main id="appMain" hidden><div class="crumb">Solicitações <span>/</span> Nova solicitação</div><div class="hero"><div class="eyebrow">Assistente de requisitos</div><h1>Vamos organizar sua solicitação.</h1><p>Conte o que aconteceu e prepare um rascunho claro para sua issue no GitHub.</p></div>
+<div class="layout"><section class="card form"><div class="head"><h2>Detalhes da solicitação</h2><span class="hint"><b class="star">*</b> Obrigatório</span></div>
+<div class="assist"><p class="assist-title">✦ &nbsp;Comece contando o que aconteceu<span>A IA local estrutura o relato e destaca o que ainda precisa ser confirmado.</span></p><div class="template-picker"><label for="issueTemplate">Modelo para a IA</label><select id="issueTemplate"><option value="auto">Identificar automaticamente</option><option value="bug">Bug · comportamento incorreto</option><option value="requisito">Melhoria · novo requisito</option></select><div class="template-hint" id="templateHint">A IA identifica se o relato descreve um bug ou uma melhoria.</div></div><textarea id="raw" placeholder="Ex.: Na unidade Centro, ao agendar um exame, não aparecem horários disponíveis para pacientes encaminhados..."></textarea><div class="assist-bottom"><span class="privacy">Não inclua dados que identifiquem pacientes.</span><div class="assist-actions"><button class="btn soft" id="saveNarrative">Salvar texto</button><button class="btn primary" id="organize">✦ Organizar com IA local</button></div></div><div class="assist-library"><select id="savedNarrativeSelect" aria-label="Relatos salvos"><option value="">Selecionar um relato salvo</option></select><button class="btn soft" id="useSavedNarrative" disabled>Usar</button><button class="btn soft" id="deleteSavedNarrative" disabled>Excluir</button></div><div class="saved-narrative-status" id="savedNarrativeStatus" aria-live="polite">Os textos ficam salvos somente neste navegador.</div><div class="assist-status" id="aiStatus" aria-live="polite"></div><div class="ai-questions" id="aiQuestions"></div></div>
+<div class="section">Identificação</div><div class="grid">
+<div class="field full"><label for="title">Título <b class="star">*</b></label><input id="title" required placeholder="Resumo claro da solicitação"></div>
+<div class="field"><label for="requester">Solicitante <b class="star">*</b></label><input id="requester" required placeholder="Nome / setor de origem"></div>
+<div class="field"><label for="date">Data <b class="star">*</b></label><input id="date" type="date" required></div>
+<div class="field full"><label for="units">Unidades impactadas <b class="star">*</b></label><input id="units" required placeholder="TODAS ou liste as unidades"></div>
+<div class="field full"><label for="frequency">É geral, ou pontual? <b class="star">*</b></label><input id="frequency" required placeholder="Acontece sempre ou em uma situação específica?"></div>
+</div>
+<div class="section">Contexto e necessidade</div><div class="grid">
+<div class="field full"><label for="problem">Qual problema essa solicitação resolve? <b class="star">*</b></label><textarea id="problem" required placeholder="Descreva a dificuldade atual e como a mudança ajudaria no dia a dia."></textarea></div>
+<div class="field full"><label for="description">Descrição da Solicitação <b class="star">*</b></label><textarea id="description" required placeholder="Explique a necessidade e como você imagina a solução."></textarea></div>
+<div class="field full"><label for="impacts">Outros módulos/relatórios afetados <b class="star">*</b></label><textarea id="impacts" required placeholder="Informe os impactos conhecidos ou o que ainda precisa ser verificado."></textarea></div>
+<div class="field full"><label for="today">Como está sendo feito hoje <b class="star">*</b></label><textarea id="today" required placeholder="Descreva o processo atual e as medidas de contorno."></textarea></div>
+<div class="field full"><label for="nonimplementation">Impacto da Não Implementação <b class="star">*</b></label><textarea id="nonimplementation" required placeholder="O que acontece se a solicitação não for atendida?"></textarea></div>
+</div><div class="section">Classificação</div><div class="grid">
+<div class="field"><label for="motivation">Motivação da Solicitação <b class="star">*</b></label><select id="motivation" required><option value="">Selecione a motivação</option><option>Redução de custo</option><option>Aumento de receita</option><option>Redução de erros operacionais</option><option>Melhoria na experiência do usuário</option><option>Atendimento a exigências regulatórias</option><option>Outras [Descreva abaixo]</option></select></div>
+<div class="field" id="otherMotivationField" hidden><label for="otherMotivation">Outra Motivação <span class="hint">se aplicável</span></label><input id="otherMotivation" placeholder="Preencha se marcou “Outras”"></div>
+<div class="field full"><label for="urgency">Urgência <b class="star">*</b></label><select id="urgency" required><option value="">Selecione a urgência</option><option>Crítico (Impacto severo no funcionamento do hospital (paralisação, erro grave))</option><option>Alto (Impacto grande, mas não impede totalmente as operações)</option><option>Médio (Melhoria importante, mas não urgente)</option><option>Baixo (Melhoria pequena ou ajuste estético)</option></select></div></div>
+<div class="foot"><span class="hint">Rascunho salvo neste navegador.</span><div class="actions"><button class="btn soft" id="clear">Apagar tudo</button><button class="btn primary" id="copy">Copiar Markdown</button></div></div></section>
+<aside class="side"><div class="card sidebox"><h3>Pronto para abrir?</h3><div class="sub" id="progressText">Preencha os campos obrigatórios</div><div class="bar"><div id="progressBar"></div></div><div class="list" id="checklist"></div></div>
+<div class="note"><b>🔒 Proteja os dados</b>Não informe nomes, documentos, prontuários, imagens ou dados identificáveis de pacientes. Prefira cenários fictícios ou anonimizados.</div>
+<div class="github"><div class="gh-title">⌘ &nbsp;Criar issue no GitHub</div>
+<p>Conecte o repositório na sua conta. Cada usuário usa seu próprio token, mantido apenas na memória do servidor enquanto ele estiver ligado.</p>
+<div id="githubSetup">
+<button class="btn soft" id="githubOAuthButton" type="button" hidden>Entrar com minha conta GitHub</button><div class="github-feedback" id="githubOAuthStatus" aria-live="polite"></div>
+<label for="githubRepo">Repositório</label><input id="githubRepo" placeholder="organização/repositório" autocomplete="off">
+<div id="githubPatWrap">
+<label for="githubToken" style="margin-top:10px">Token de acesso</label><input id="githubToken" type="password" placeholder="ghp_… ou github_pat_…" autocomplete="new-password">
+<div class="github-help">Use um token fine-grained com acesso ao repositório e permissões <b>Issues: Read and write</b> e <b>Projects: Read and write</b> para listar e selecionar projetos. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Criar token</a></div>
+</div>
+<button class="btn soft" id="connectGithub" style="width:100%;margin-top:10px">Conectar repositório</button>
+<div class="github-feedback" id="githubFeedback" aria-live="polite"></div>
+</div>
+<div id="githubConnected" hidden><div class="github-connected" id="githubTarget"></div><button class="btn soft" id="disconnectGithub" style="width:100%;margin:8px 0 10px">Desconectar</button></div>
+<div class="gh-options" id="githubOptions" hidden>
+<div class="gh-options-title">Labels</div><input id="labelSearch" placeholder="Filtrar labels…" aria-label="Filtrar labels"><div class="gh-label-list" id="labelList">Carregando labels…</div>
+<div class="gh-options-title gh-project">Projeto</div><select id="projectSelect"><option value="">Não adicionar a um projeto</option></select>
+<div id="projectStatusBox" hidden><label for="projectStatus">Coluna · Status</label><select id="projectStatus"><option value="">Usar status padrão</option></select></div>
+<div class="github-feedback" id="optionsFeedback" aria-live="polite"></div></div>
+<button class="btn primary" id="createIssue" disabled style="width:100%;margin-top:10px">Criar issue</button>
+<div class="github-feedback" id="githubResult" aria-live="polite"></div>
+</div><div class="card history-card"><div class="history-head"><h3>Issues criadas recentemente</h3><button class="btn soft" id="clearIssueHistory" type="button">Limpar</button></div><div class="issue-history" id="issueHistory" aria-live="polite"></div></div></aside></div></main><div class="toast" id="toast"></div>
+<div class="admin-overlay" id="adminOverlay" hidden><section class="admin-card"><div class="admin-head"><h2>Gerenciar acessos</h2><button class="btn soft" id="closeAdmin" type="button">Fechar</button></div><form class="admin-form" id="newUserForm"><div><label for="newUsername">Usuário</label><input id="newUsername" minlength="3" maxlength="32" required autocomplete="off"></div><div><label for="newPassword">Senha inicial (mínimo 12 caracteres)</label><input id="newPassword" type="password" minlength="12" required autocomplete="new-password"></div><div><label for="newRole">Permissão</label><select id="newRole"><option value="user">Usuário</option><option value="admin">Administrador</option></select></div><div class="wide"><button class="btn primary" type="submit">Criar acesso</button><div class="admin-error" id="adminError" aria-live="polite"></div></div></form><div class="admin-users" id="adminUsers"></div></section></div>
+<script>
+window.authReady=(async function(){
+  const $=function(id){return document.getElementById(id)},screen=$("authScreen"),main=$("appMain"),form=$("authForm");let authorized=false;
+  async function jsonRequest(path,options){const response=await fetch(path,options||{});const data=await response.json().catch(function(){return {}});if(!response.ok)throw new Error(data.error||"Não foi possível concluir a operação.");return data}
+  function showUser(user){screen.hidden=true;main.hidden=false;$("authUserLabel").hidden=false;$("authUserLabel").textContent=user.username;$("logoutButton").hidden=false;$("adminButton").hidden=user.role!=="admin"}
+  try{const data=await jsonRequest("/api/auth/me");if(data.user){showUser(data.user);authorized=true}}catch(e){}
+  if(!authorized){main.hidden=true;screen.hidden=false;try{const setup=await jsonRequest("/api/auth/setup-status");if(setup.setupRequired){$("authTitle").textContent="Criar administrador";$("authDescription").textContent=setup.setupEnabled?"Configure a primeira conta administradora para proteger e gerenciar os acessos.":"A primeira configuração ainda não está habilitada. O administrador do servidor precisa definir ADMIN_SETUP_KEY.";$("authSubmit").textContent="Criar administrador";$("setupKeyWrap").hidden=false;$("setupKey").required=true;form.dataset.mode="setup"}}catch(e){$("authMessage").textContent=e.message}
+    form.addEventListener("submit",async function(event){event.preventDefault();const button=$("authSubmit"),message=$("authMessage");button.disabled=true;message.textContent="";try{const setup=form.dataset.mode==="setup";await jsonRequest(setup?"/api/auth/setup":"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({setupKey:$("setupKey").value,username:$("authUsername").value.trim(),password:$("authPassword").value})});location.reload()}catch(error){message.textContent=error.message;button.disabled=false}})
+  }
+  $("logoutButton").addEventListener("click",async function(){await fetch("/api/auth/logout",{method:"POST"});location.reload()});
+  async function loadUsers(){const data=await jsonRequest("/api/admin/users"),list=$("adminUsers");list.replaceChildren();data.users.forEach(function(user){const row=document.createElement("div");row.className="admin-user";const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("small"),actions=document.createElement("div");actions.className="admin-user-actions";name.textContent=user.username;meta.textContent=(user.role==="admin"?"Administrador":"Usuário")+" · "+(user.active?"Ativo":"Desativado");info.append(name,meta);row.append(info);const reset=document.createElement("button");reset.type="button";reset.className="btn soft";reset.textContent="Redefinir senha";reset.addEventListener("click",async function(){const password=prompt("Nova senha para "+user.username+" (mínimo 12 caracteres):");if(password===null)return;try{await jsonRequest("/api/admin/users/"+user.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:password})});$("adminError").textContent="Senha atualizada.";await loadUsers()}catch(error){$("adminError").textContent=error.message}});actions.appendChild(reset);if(user.username!==$("authUserLabel").textContent){const toggle=document.createElement("button");toggle.type="button";toggle.className="btn soft";toggle.textContent=user.active?"Desativar":"Reativar";toggle.addEventListener("click",async function(){try{await jsonRequest("/api/admin/users/"+user.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({active:!user.active})});await loadUsers()}catch(error){$("adminError").textContent=error.message}});actions.appendChild(toggle)}row.appendChild(actions);list.appendChild(row)})}
+  $("adminButton").addEventListener("click",async function(){$("adminOverlay").hidden=false;$("adminError").textContent="";try{await loadUsers()}catch(error){$("adminError").textContent=error.message}});$("closeAdmin").addEventListener("click",function(){$("adminOverlay").hidden=true});$("adminOverlay").addEventListener("click",function(event){if(event.target===$("adminOverlay"))$("adminOverlay").hidden=true});
+  $("newUserForm").addEventListener("submit",async function(event){event.preventDefault();try{await jsonRequest("/api/admin/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("newUsername").value.trim(),password:$("newPassword").value,role:$("newRole").value})});this.reset();$("adminError").textContent="Acesso criado.";await loadUsers()}catch(error){$("adminError").textContent=error.message}});
+  return authorized;
+})();
+</script>
+<script>
+window.authReady.then(function(authorized){if(!authorized)return;(function(){
+const ids=["title","requester","date","units","frequency","problem","description","impacts","today","nonimplementation","motivation","otherMotivation","urgency"];
+const required=ids.filter(function(x){return x!=="otherMotivation"});
+const generated=["title","requester","units","frequency","problem","description","impacts","today","nonimplementation","motivation","otherMotivation","urgency"];
+const names={title:"Título",requester:"Solicitante",date:"Data",units:"Unidades impactadas",frequency:"Geral ou pontual",problem:"Problema",description:"Descrição",impacts:"Outros módulos/relatórios",today:"Processo atual",nonimplementation:"Impacto da não implementação",motivation:"Motivação",urgency:"Urgência"};
+const $=function(id){return document.getElementById(id)}, userStorageSuffix=encodeURIComponent($("authUserLabel").textContent), key="clareia.issueDraft.v1."+userStorageSuffix, narrativesKey="clareia.savedNarratives.v1."+userStorageSuffix, issueHistoryKey="automacao.issueHistory.v1."+userStorageSuffix;let githubConnected=false,githubLabels=[],githubProjects=[],aiClassification="",aiAppliedLabel="",savedNarratives=[],issueHistory=[];
+const now=new Date();$("date").value=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
+function toast(s){$("toast").textContent=s;$("toast").classList.add("show");setTimeout(function(){$("toast").classList.remove("show")},2600)}
+if(new URLSearchParams(location.search).get("github")==="connected"){history.replaceState(null,"",location.pathname);setTimeout(function(){toast("Conta GitHub autorizada. Informe o repositório para conectar.")},150)}
+function renderSavedNarratives(selectedId){
+  const select=$("savedNarrativeSelect"),previous=selectedId||select.value;select.replaceChildren(new Option("Selecionar um relato salvo",""));
+  savedNarratives.forEach(function(item){select.add(new Option(item.title,item.id))});
+  if(savedNarratives.some(function(item){return item.id===previous}))select.value=previous;
+  const hasSelection=!!select.value;$("useSavedNarrative").disabled=!hasSelection;$("deleteSavedNarrative").disabled=!hasSelection;
+}
+try{const stored=JSON.parse(localStorage.getItem(narrativesKey)||"[]");if(Array.isArray(stored))savedNarratives=stored.filter(function(item){return item&&typeof item.id==="string"&&typeof item.title==="string"&&typeof item.text==="string"})}catch(e){}
+renderSavedNarratives();
+function renderIssueHistory(){
+  const list=$("issueHistory");list.replaceChildren();
+  if(!issueHistory.length){const empty=document.createElement("p");empty.className="history-empty";empty.textContent="As issues criadas aparecerão aqui neste navegador.";list.appendChild(empty);$("clearIssueHistory").disabled=true;return}
+  $("clearIssueHistory").disabled=false;
+  issueHistory.forEach(function(item){
+    const row=document.createElement("div");row.className="history-entry";
+    try{const url=new URL(item.url);if(url.protocol==="https:"&&url.hostname==="github.com"){const link=document.createElement("a");link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";link.textContent="Issue #"+item.number+" · "+item.title;row.appendChild(link)}else throw new Error("URL inválida")}catch(e){const title=document.createElement("small");title.textContent="Issue #"+item.number+" · "+item.title;row.appendChild(title)}
+    const details=document.createElement("small");details.textContent=item.repository+" · "+new Date(item.createdAt).toLocaleString("pt-BR");row.appendChild(details);
+    const metadata=[];if(item.labels&&item.labels.length)metadata.push("Labels: "+item.labels.join(", "));if(item.project)metadata.push("Projeto: "+item.project);if(item.status)metadata.push("Status: "+item.status);
+    if(metadata.length){const extra=document.createElement("small");extra.textContent=metadata.join(" · ");row.appendChild(extra)}
+    list.appendChild(row);
+  });
+}
+try{const storedHistory=JSON.parse(localStorage.getItem(issueHistoryKey)||"[]");if(Array.isArray(storedHistory))issueHistory=storedHistory.filter(function(item){return item&&typeof item.number==="number"&&typeof item.title==="string"&&typeof item.url==="string"&&typeof item.repository==="string"&&typeof item.createdAt==="number"}).slice(0,20)}catch(e){}
+renderIssueHistory();
+function recordIssueHistory(result){
+  const entry={number:result.number,title:result.title||$("title").value.trim(),url:result.url,repository:result.repository,labels:Array.isArray(result.labels)?result.labels:[],project:result.project||"",status:result.status||"",createdAt:Date.now()};
+  issueHistory=[entry].concat(issueHistory.filter(function(item){return item.number!==entry.number||item.repository!==entry.repository})).slice(0,20);
+  try{localStorage.setItem(issueHistoryKey,JSON.stringify(issueHistory));renderIssueHistory()}catch(e){toast("Issue criada, mas não foi possível salvar no histórico local.")}
+}
+$("clearIssueHistory").addEventListener("click",function(){if(!issueHistory.length||!confirm("Apagar o histórico local de issues criadas? Isso não apaga as issues no GitHub."))return;issueHistory=[];localStorage.removeItem(issueHistoryKey);renderIssueHistory()});
+const templateHints={auto:"A IA identifica se o relato descreve um bug ou uma melhoria.",bug:"Modelo de bug: destaca comportamento observado, resultado esperado, etapa e erro mencionado.",requisito:"Modelo de melhoria: destaca fluxo atual, necessidade, comportamento desejado e resultado esperado."};
+const templateStorageKey="automacao.issueTemplate.v1."+userStorageSuffix;try{const savedTemplate=localStorage.getItem(templateStorageKey);if(["auto","bug","requisito"].includes(savedTemplate))$("issueTemplate").value=savedTemplate}catch(e){}
+$("templateHint").textContent=templateHints[$("issueTemplate").value]||templateHints.auto;
+$("issueTemplate").addEventListener("change",function(){const type=this.value;$("templateHint").textContent=templateHints[type]||templateHints.auto;try{localStorage.setItem(templateStorageKey,type)}catch(e){}});
+$("saveNarrative").addEventListener("click",function(){
+  const text=$("raw").value.trim(),status=$("savedNarrativeStatus");if(!text){status.textContent="Escreva um relato antes de salvar.";return}
+  const normalized=text.replace(/\s+/g," ").toLocaleLowerCase("pt-BR"),existing=savedNarratives.find(function(item){return item.text.replace(/\s+/g," ").toLocaleLowerCase("pt-BR")===normalized});
+  if(existing){renderSavedNarratives(existing.id);status.textContent="Esse texto já está salvo neste navegador.";return}
+  if(savedNarratives.length>=50){status.textContent="Limite de 50 relatos salvos. Exclua algum antes de salvar outro.";return}
+  const firstLine=text.split(/\r?\n/).map(function(line){return line.trim()}).find(Boolean)||text.replace(/\s+/g," ");
+  const title=firstLine.length>58?firstLine.slice(0,55).replace(/\s+\S*$/,"…"):firstLine;
+  const item={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),title:title,text:text,savedAt:Date.now()};
+  savedNarratives.unshift(item);
+  try{localStorage.setItem(narrativesKey,JSON.stringify(savedNarratives));renderSavedNarratives(item.id);status.textContent="Texto salvo somente neste navegador.";toast("Relato salvo.")}
+  catch(error){savedNarratives.shift();status.textContent="Não foi possível salvar. O armazenamento do navegador pode estar cheio."}
+});
+$("useSavedNarrative").addEventListener("click",function(){
+  const item=savedNarratives.find(function(saved){return saved.id===$("savedNarrativeSelect").value});if(!item)return;
+  if($("raw").value.trim()&&$("raw").value.trim()!==item.text&&!confirm("Substituir o texto atual pelo relato salvo?"))return;
+  $("raw").value=item.text;$("raw").dispatchEvent(new Event("input",{bubbles:true}));$("savedNarrativeStatus").textContent="Relato carregado. Você pode editar antes de organizar com a IA.";toast("Relato carregado.");
+});
+$("deleteSavedNarrative").addEventListener("click",function(){
+  const id=$("savedNarrativeSelect").value,item=savedNarratives.find(function(saved){return saved.id===id});if(!item||!confirm("Excluir este relato salvo?"))return;
+  savedNarratives=savedNarratives.filter(function(saved){return saved.id!==id});localStorage.setItem(narrativesKey,JSON.stringify(savedNarratives));renderSavedNarratives();$("savedNarrativeStatus").textContent="Relato salvo excluído.";
+});
+$("savedNarrativeSelect").addEventListener("change",function(){const selected=!!this.value;$("useSavedNarrative").disabled=!selected;$("deleteSavedNarrative").disabled=!selected});
+function update(){
+  const isOther=$("motivation").value.indexOf("Outras")===0;
+  $("otherMotivationField").hidden=!isOther;
+  if(!isOther)$("otherMotivation").value="";
+  const count=required.filter(function(id){return $(id).value.trim()}).length;$("createIssue").disabled=!githubConnected||count<required.length;
+  $("progressBar").style.width=Math.round(count/required.length*100)+"%";
+  $("progressText").textContent=count===required.length?"Todos os campos obrigatórios preenchidos":count+" de "+required.length+" campos obrigatórios preenchidos";
+  $("checklist").innerHTML=required.map(function(id){const done=!!$(id).value.trim();return '<div class="item '+(done?"done":"")+'"><span class="mark">'+(done?"✓":"")+'</span><span>'+names[id]+'</span></div>'}).join("");
+  const draft={};ids.forEach(function(id){draft[id]=$(id).value});localStorage.setItem(key,JSON.stringify(draft));
+}
+try{const saved=JSON.parse(localStorage.getItem(key)||"{}");ids.forEach(function(id){if(saved[id])$(id).value=saved[id]})}catch(e){}
+ids.forEach(function(id){$(id).addEventListener("input",update);$(id).addEventListener("change",update)});update();
+
+async function updateAIStatus(){
+  const badge=$("ollamaStatus");
+  try{
+    const response=await fetch("/api/status",{cache:"no-store"});
+    const state=await response.json();
+    if(state.available&&state.modelInstalled){badge.textContent="IA local conectada · "+state.model;badge.className="topnote connected"}
+    else if(state.available){badge.textContent="Ollama ativo · modelo "+state.model+" não encontrado";badge.className="topnote disconnected"}
+    else{badge.textContent="Ollama não está ativo";badge.className="topnote disconnected"}
+  }catch(e){badge.textContent="Inicie o servidor local para usar a IA";badge.className="topnote disconnected"}
+}
+updateAIStatus();
+
+const touched=new Set(), generatedByAi=new Set();
+let lastQuestions=[];
+ids.forEach(function(id){$(id).addEventListener("input",function(){touched.add(id)});$(id).addEventListener("change",function(){touched.add(id)})});
+function renderQuestions(questions){
+  const box=$("aiQuestions");box.replaceChildren();lastQuestions=questions;
+  if(!questions.length)return;
+  questions.forEach(function(question,index){
+    const label=document.createElement("label");label.className="ai-question";label.textContent=question;
+    const answer=document.createElement("textarea");answer.dataset.question=String(index);answer.placeholder="Digite a resposta para a IA considerar…";label.appendChild(answer);box.appendChild(label);
+  });
+  const button=document.createElement("button");button.type="button";button.className="btn soft ai-answer-button";button.textContent="Responder e atualizar rascunho";button.addEventListener("click",function(){runDraft(true)});box.appendChild(button);
+}
+async function runDraft(followup){
+  const raw=$("raw").value.trim();if(raw.length<10){toast("Descreva a solicitação com um pouco mais de detalhe.");$("raw").focus();return}
+  const button=$("organize"),status=$("aiStatus");button.disabled=true;button.textContent="Analisando com IA local…";
+  const answerButton=$("aiQuestions").querySelector("button");if(answerButton)answerButton.disabled=true;
+  status.textContent=followup?"A IA está incorporando suas respostas…":"O modelo está organizando os campos. A primeira execução pode demorar um pouco enquanto o modelo carrega.";status.className="assist-status loading";
+  try{
+    const current={};ids.forEach(function(id){current[id]=$(id).value});
+    const answers={};if(followup){$("aiQuestions").querySelectorAll("textarea").forEach(function(input){if(input.value.trim())answers[lastQuestions[Number(input.dataset.question)]]=input.value.trim()})}
+    const response=await fetch("/api/draft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({raw:raw,current:current,answers:answers,classificationPreference:$("issueTemplate").value})});
+    let result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível iniciar a geração do rascunho.");
+    if(response.status===202&&result.jobId){
+      const jobId=result.jobId;let elapsed=0;
+      while(true){
+        await new Promise(function(resolve){setTimeout(resolve,500)});elapsed+=0.5;
+        status.textContent="A IA está preenchendo os campos com base no relato… "+Math.floor(elapsed)+" s";
+        const jobResponse=await fetch("/api/draft/jobs/"+encodeURIComponent(jobId),{cache:"no-store"});
+        const jobResult=await jobResponse.json();
+        if(!jobResponse.ok)throw new Error(jobResult.error||"A geração da IA falhou.");
+        if(jobResult.status==="done"){result=jobResult;break}
+        if(jobResult.status==="error")throw new Error(jobResult.error||"Não foi possível gerar o rascunho.");
+      }
+    }
+    generated.forEach(function(id){
+      if(touched.has(id)&&!generatedByAi.has(id))return;
+      if($(id).value.trim()&&!generatedByAi.has(id))return;
+      const value=typeof result.draft[id]==="string"?result.draft[id].trim():"";if(!value)return;
+      if($(id).tagName==="SELECT"&&!Array.from($(id).options).some(function(option){return option.value===value||option.text===value}))return;
+      $(id).value=value;generatedByAi.add(id);
+    });
+    aiClassification=result.draft.classification==="bug"?"bug":"requisito";
+    const classificationLabel=applyClassificationLabel();
+    update();const questions=Array.isArray(result.draft.questions)?result.draft.questions.slice(0,1):[];renderQuestions(questions);
+    const classificationName=aiClassification==="bug"?"Bug":"Requisito / melhoria";
+    const classificationMessage=" Classificação sugerida: "+classificationName+(classificationLabel?" · label "+classificationLabel+" marcado.":githubConnected?" · não encontrei um label correspondente neste repositório.":" · conecte o repositório para marcar o label correspondente.");
+    status.textContent=(questions.length?"Rascunho atualizado por "+result.model+". Responda abaixo para completar os dados pendentes.":"Rascunho sugerido por "+result.model+". Revise as informações antes de usar.")+classificationMessage;status.className="assist-status success";
+    toast(followup?"Respostas incorporadas ao rascunho.":"Rascunho gerado pela IA local. Revise antes de usar.");
+  }catch(error){status.textContent=error.message;status.className="assist-status error";toast("Não foi possível gerar o rascunho.")}
+  finally{button.disabled=false;button.textContent="✦ Organizar com IA local";const answerButton=$("aiQuestions").querySelector("button");if(answerButton)answerButton.disabled=false}
+}
+$("organize").addEventListener("click",function(){runDraft(false)});
+
+async function syncGithub(){
+  try{
+    const oauthResponse=await fetch("/api/github/oauth/status",{cache:"no-store"}),oauth=await oauthResponse.json();
+    $("githubOAuthButton").hidden=!oauth.available;
+    $("githubOAuthStatus").textContent=oauth.connected?"Conta GitHub autorizada: @"+oauth.githubUser+(". Informe o repositório e conecte."):"";
+    $("githubPatWrap").hidden=!!oauth.connected;
+    const response=await fetch("/api/github/status",{cache:"no-store"});
+    const state=await response.json();
+    githubConnected=!!state.connected;
+    $("githubSetup").hidden=githubConnected;
+    $("githubConnected").hidden=!githubConnected;
+    $("githubTarget").textContent=githubConnected?"Conectado a "+state.repository:"";
+    $("githubOptions").hidden=!githubConnected;
+    update();
+    if(githubConnected)loadGithubOptions();
+  }catch(e){
+    githubConnected=false;
+    $("githubFeedback").textContent="Não foi possível consultar a conexão com GitHub.";
+    $("githubFeedback").className="github-feedback error";
+  }
+}
+syncGithub();
+
+$("githubOAuthButton").addEventListener("click",function(){location.href="/api/github/oauth/start"});
+
+$("connectGithub").addEventListener("click",async function(){
+  const button=$("connectGithub"), feedback=$("githubFeedback");
+  button.disabled=true;feedback.className="github-feedback";feedback.textContent="Validando acesso ao repositório…";
+  try{
+    const response=await fetch("/api/github/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({repository:$("githubRepo").value.trim(),token:$("githubToken").value})});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.error||"Não foi possível conectar.");
+    githubConnected=true;
+    $("githubToken").value="";
+    $("githubSetup").hidden=true;
+    $("githubConnected").hidden=false;
+    $("githubTarget").textContent="Conectado a "+result.repository;
+    feedback.textContent="";
+    $("githubOptions").hidden=false;
+    update();
+    await loadGithubOptions();
+    toast("Repositório conectado para @"+(result.githubUser||"sua conta GitHub")+".");
+  }catch(error){
+    feedback.textContent=error.message;
+    feedback.className="github-feedback error";
+  }finally{button.disabled=false}
+});
+
+function renderLabels(){
+  const query=$("labelSearch").value.trim().toLowerCase(),list=$("labelList"),selected=new Set(Array.from(list.querySelectorAll("input[type=checkbox]:checked")).map(function(input){return input.value}));list.replaceChildren();
+  const labels=githubLabels.filter(function(label){return label.name.toLowerCase().includes(query)||(label.description||"").toLowerCase().includes(query)});
+  if(!labels.length){list.textContent="Nenhuma label encontrada.";return}
+  labels.forEach(function(label){
+    const row=document.createElement("label");row.className="gh-label";
+    const box=document.createElement("input");box.type="checkbox";box.value=label.name;box.checked=selected.has(label.name);box.setAttribute("aria-label",label.name);
+    const swatch=document.createElement("span");swatch.style.cssText="width:9px;height:9px;border-radius:50%;background:#"+(label.color||"8792a2");swatch.setAttribute("aria-hidden","true");
+    const name=document.createElement("span");name.textContent=label.name+(label.description?" · "+label.description:"");
+    row.append(box,swatch,name);list.appendChild(row);
+  });
+}
+function applyClassificationLabel(){
+  if(!aiClassification||!githubLabels.length)return "";
+  const normalize=function(value){return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim()};
+  const exact=aiClassification==="bug"?["t:bug","bug"]:["t:requisito","requisito","t:melhoria","melhoria","enhancement","feature"];
+  let target=githubLabels.find(function(label){return exact.includes(normalize(label.name))});
+  if(!target){
+    const pattern=aiClassification==="bug"?/(^|[^a-z])bug([^a-z]|$)/:/(^|[^a-z])(requisito|melhoria|enhancement|feature)([^a-z]|$)/;
+    target=githubLabels.find(function(label){return pattern.test(normalize(label.name))});
+  }
+  if(!target)return "";
+  const list=$("labelList");
+  if(aiAppliedLabel&&aiAppliedLabel!==target.name){const oldBox=Array.from(list.querySelectorAll("input[type=checkbox]")).find(function(input){return input.value===aiAppliedLabel});if(oldBox)oldBox.checked=false}
+  const selected=new Set(Array.from(list.querySelectorAll("input[type=checkbox]:checked")).map(function(input){return input.value}));selected.add(target.name);
+  if($("labelSearch").value){$("labelSearch").value="";renderLabels()}
+  list.querySelectorAll("input[type=checkbox]").forEach(function(input){input.checked=selected.has(input.value)});
+  aiAppliedLabel=target.name;
+  return target.name;
+}
+async function loadGithubOptions(){
+  const feedback=$("optionsFeedback");feedback.className="github-feedback";feedback.textContent="Carregando labels e projetos…";
+  try{
+    const response=await fetch("/api/github/options",{cache:"no-store"}),data=await response.json();
+    if(!response.ok)throw new Error(data.error||"Não foi possível carregar labels e projetos.");
+    githubLabels=Array.isArray(data.labels)?data.labels:[];githubProjects=Array.isArray(data.projects)?data.projects:[];
+    renderLabels();applyClassificationLabel();const select=$("projectSelect");select.replaceChildren(new Option("Não adicionar a um projeto",""));
+    githubProjects.forEach(function(project){select.add(new Option(project.title+" · #"+project.number,project.id))});
+    feedback.textContent=githubLabels.length+" labels e "+githubProjects.length+" projetos carregados.";
+    if(data.projectsError)feedback.textContent+=" Projetos indisponíveis: "+data.projectsError+" Confira Projects: Read and write no token.";
+    else if(!githubProjects.length)feedback.textContent+=" Se esperava encontrar projetos, confira a permissão Projects do token.";
+  }catch(error){
+    githubLabels=[];githubProjects=[];renderLabels();$("labelList").textContent="Não foi possível carregar labels.";
+    $("projectSelect").replaceChildren(new Option("Não foi possível carregar projetos",""));
+    feedback.textContent=error.message+" O token precisa de permissão Issues Read and write e, para projetos, Projects Read and write.";
+    feedback.className="github-feedback error";
+  }
+}
+$("labelSearch").addEventListener("input",renderLabels);
+$("projectSelect").addEventListener("change",function(){
+  const project=githubProjects.find(function(item){return item.id===$("projectSelect").value}),box=$("projectStatusBox"),select=$("projectStatus");
+  select.replaceChildren(new Option("Selecione uma coluna",""));select.dataset.fieldId="";
+  if(!project||!project.statusField){box.hidden=true;return}
+  select.dataset.fieldId=project.statusField.id;
+  project.statusField.options.forEach(function(option){select.add(new Option(option.name,option.id))});
+  box.hidden=false;
+});
+$("disconnectGithub").addEventListener("click",async function(){
+  try{await fetch("/api/github/disconnect",{method:"POST"})}catch(e){}
+  githubConnected=false;
+  $("githubSetup").hidden=false;
+  $("githubConnected").hidden=true;
+  $("githubToken").value="";
+  $("githubResult").textContent="";
+  $("githubOptions").hidden=true;
+  $("labelList").replaceChildren();
+  $("projectSelect").replaceChildren(new Option("Não adicionar a um projeto",""));
+  $("projectStatusBox").hidden=true;
+  update();
+});
+
+async function submitIssue(title,body,button,confirmMessage){
+  if(!githubConnected){toast("Conecte um repositório primeiro.");return}
+  const target=$("githubTarget").textContent.replace("Conectado a ","");
+  const selectedLabels=Array.from(document.querySelectorAll("#labelList input:checked")).map(function(input){return input.value});
+  const selectedProject=githubProjects.find(function(project){return project.id===$("projectSelect").value});
+  const selectedStatus=$("projectStatus").value?Array.from($("projectStatus").options).find(function(option){return option.value===$("projectStatus").value}):null;
+  const selectionSummary="\n\nLabels: "+(selectedLabels.join(", ")||"nenhuma selecionada")+"\nProjeto: "+(selectedProject?selectedProject.title:"nenhum selecionado")+"\nColuna/status: "+(selectedStatus?selectedStatus.text:"não selecionado");
+  if(!confirm(confirmMessage+"\n\nRepositório: "+target+"\n\nTítulo: "+title+selectionSummary))return;
+  const resultBox=$("githubResult");button.disabled=true;button.dataset.label=button.textContent;button.textContent="Criando issue…";resultBox.textContent="";
+  try{
+    const response=await fetch("/api/github/issues",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:title,body:body,labels:selectedLabels,projectId:$("projectSelect").value,statusFieldId:$("projectStatus").dataset.fieldId||"",statusOptionId:$("projectStatus").value})});
+    const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível criar a issue.");recordIssueHistory(result);
+    resultBox.replaceChildren();const link=document.createElement("a");link.href=result.url;link.target="_blank";link.rel="noopener noreferrer";link.className="github-result-link";link.textContent="Issue #"+result.number+" criada · abrir no GitHub";resultBox.appendChild(link);
+    resultBox.appendChild(document.createTextNode(" · Labels: "+(selectedLabels.length?(result.labels||[]).join(", ")||"não confirmadas":"nenhuma selecionada")));
+    if(result.project)resultBox.appendChild(document.createTextNode(" · adicionada ao projeto "+result.project+(result.status?" na coluna "+result.status:"")));
+    else if(selectedProject&&!result.projectError)resultBox.appendChild(document.createTextNode(" · projeto selecionado: "+selectedProject.title));
+    if(selectedProject&&!selectedStatus&&!result.projectError)resultBox.appendChild(document.createTextNode(" · status não selecionado"));
+    if(result.labelsError){const warning=document.createElement("div");warning.textContent="A issue foi criada, mas não foi possível aplicar/confirmar as labels: "+result.labelsError;warning.className="github-feedback error";resultBox.appendChild(warning)}
+    if(result.projectError){const warning=document.createElement("div");warning.textContent="A issue foi criada, mas falhou a inclusão no projeto/status: "+result.projectError;warning.className="github-feedback error";resultBox.appendChild(warning)}
+    resultBox.className=result.projectError||result.labelsError?"github-feedback error":"github-feedback success";toast("Issue #"+result.number+" criada.");
+  }catch(error){resultBox.textContent=error.message;resultBox.className="github-feedback error"}
+  finally{button.textContent=button.dataset.label||"Criar issue";update()}
+}
+$("createIssue").addEventListener("click",function(){
+  if(!required.every(function(id){return $(id).value.trim()})){toast("Preencha os campos obrigatórios para criar uma issue completa.");return}
+  const selectedProject=githubProjects.find(function(project){return project.id===$("projectSelect").value});
+  if(selectedProject&&selectedProject.statusField&&selectedProject.statusField.options.length&&!$("projectStatus").value){toast("Selecione a coluna/status do projeto antes de criar a issue.");$("projectStatus").focus();return}
+  submitIssue($("title").value.trim(),markdown(),$("createIssue"),"Criar a issue completa?");
+});
+function markdown(){
+  function value(id){return $(id).value.trim()||"—"}
+  return ["## Solicitante\n"+value("requester"),"## Data\n"+value("date"),"## Unidades impactadas\n"+value("units"),"## É geral, ou pontual\n"+value("frequency"),"## Qual problema essa solicitação resolve?\n"+value("problem"),"## Descrição da Solicitação\n"+value("description"),"## Outros módulos/relatórios afetados\n"+value("impacts"),"## Como está sendo feito hoje\n"+value("today"),"## Impacto da Não Implementação\n"+value("nonimplementation"),"## Motivação da Solicitação\n"+value("motivation"),"## Outra Motivação\n"+value("otherMotivation"),"## Urgência\n"+value("urgency")].join("\n\n")
+}
+$("copy").addEventListener("click",async function(){
+  if(!$("title").value.trim()){toast("Informe um título antes de copiar.");$("title").focus();return}
+  try{await navigator.clipboard.writeText(markdown());toast("Markdown copiado.")}
+  catch(e){const area=document.createElement("textarea");area.value=markdown();document.body.appendChild(area);area.select();document.execCommand("copy");area.remove();toast("Markdown copiado.")}
+});
+$("clear").addEventListener("click",function(){
+  if(!confirm("Apagar o relato, todos os campos e as seleções deste rascunho? A conexão com o GitHub será mantida."))return;
+  ids.forEach(function(id){$(id).value=""});$("raw").value="";
+  $("date").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+  touched.clear();generatedByAi.clear();lastQuestions=[];aiClassification="";aiAppliedLabel="";
+  $("aiQuestions").replaceChildren();
+  $("aiStatus").textContent="";$("aiStatus").className="assist-status";
+  $("githubResult").replaceChildren();$("githubResult").className="github-feedback";
+  $("optionsFeedback").textContent="";$("optionsFeedback").className="github-feedback";
+  $("labelSearch").value="";
+  document.querySelectorAll("#labelList input[type=checkbox]").forEach(function(input){input.checked=false});
+  $("projectSelect").value="";$("projectSelect").dispatchEvent(new Event("change"));
+  update();localStorage.removeItem(key);toast("Rascunho apagado.");
+});
+})();});
+</script></body></html>
+
+
+
+
+
+
+
+
+
+
+

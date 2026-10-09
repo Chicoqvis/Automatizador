@@ -1,0 +1,11 @@
+[
+  {
+    "id": "d8e21a43-90be-4753-bfb6-5ff860e482b1",
+    "username": "jviana",
+    "role": "admin",
+    "active": true,
+    "createdAt": 1791510645357,
+    "salt": "caeaab14159f0b043e43c49ff46b096b",
+    "hash": "af1f4a1fde006df587e413e896df5023fa8ae43cc07473b2f95875ab9060928dd70ff808dc40a76726a446d856924dc769b0224fe09dbb5e06f64fa82983c556"
+  }
+]
