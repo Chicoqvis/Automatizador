@@ -7,8 +7,11 @@ import { promisify } from "node:util";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4173);
+const AI_PROVIDER = (process.env.AI_PROVIDER || "ollama").trim().toLowerCase();
 const OLLAMA_BASE = (process.env.OLLAMA_HOST || "http://127.0.0.1:11434").replace(/\/+$/, "");
-const MODEL = process.env.OLLAMA_MODEL || "qwen3:1.7b";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen3:1.7b";
+const CLOUDFLARE_AI_URL = (process.env.CLOUDFLARE_AI_URL || "").replace(/\/+$/, "");
+const CLOUDFLARE_AI_TOKEN = process.env.CLOUDFLARE_AI_TOKEN || "";
 const DATA_DIR = path.join(ROOT, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const scrypt = promisify(scryptCallback);
@@ -60,6 +63,31 @@ async function getModels() {
   return Array.isArray(data.models) ? data.models.map((item) => item.name) : [];
 }
 
+function aiModel() {
+  return AI_PROVIDER === "cloudflare" ? (process.env.CLOUDFLARE_AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast") : OLLAMA_MODEL;
+}
+
+async function aiStatus() {
+  if (AI_PROVIDER === "cloudflare") {
+    const configured = !!(CLOUDFLARE_AI_URL && CLOUDFLARE_AI_TOKEN);
+    if (!configured) return { provider: "cloudflare", available: false, model: aiModel(), modelInstalled: false };
+    try {
+      const response = await fetch(CLOUDFLARE_AI_URL + "/health", { headers: { Authorization: "Bearer " + CLOUDFLARE_AI_TOKEN }, signal: AbortSignal.timeout(2500) });
+      if (!response.ok) throw new Error("Worker indisponível");
+      const state = await response.json();
+      return { provider: "cloudflare", available: !!state.available, model: state.model || aiModel(), modelInstalled: !!state.available };
+    } catch {
+      return { provider: "cloudflare", available: false, model: aiModel(), modelInstalled: false };
+    }
+  }
+  try {
+    const models = await getModels();
+    return { provider: "ollama", available: true, model: OLLAMA_MODEL, modelInstalled: models.some((name) => name === OLLAMA_MODEL || name.startsWith(OLLAMA_MODEL + ":")) };
+  } catch {
+    return { provider: "ollama", available: false, model: OLLAMA_MODEL, modelInstalled: false };
+  }
+}
+
 function send(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(data));
@@ -93,9 +121,16 @@ async function generate(body) {
   if (raw.length < 10) throw Object.assign(new Error("Descreva a solicitação com um pouco mais de detalhe."), { status: 400 });
   if (raw.length > 20000) throw Object.assign(new Error("A descrição deve ter no máximo 20.000 caracteres."), { status: 400 });
 
-  const models = await getModels();
-  if (!models.some((name) => name === MODEL || name.startsWith(MODEL + ":"))) {
-    throw Object.assign(new Error("O modelo " + MODEL + " não foi encontrado no Ollama. Baixe-o com: ollama pull " + MODEL), { status: 409 });
+  if (AI_PROVIDER !== "ollama" && AI_PROVIDER !== "cloudflare") {
+    throw Object.assign(new Error("AI_PROVIDER deve ser 'ollama' ou 'cloudflare'."), { status: 500 });
+  }
+  if (AI_PROVIDER === "ollama") {
+    const models = await getModels();
+    if (!models.some((name) => name === OLLAMA_MODEL || name.startsWith(OLLAMA_MODEL + ":"))) {
+      throw Object.assign(new Error("O modelo " + OLLAMA_MODEL + " não foi encontrado no Ollama. Baixe-o com: ollama pull " + OLLAMA_MODEL), { status: 409 });
+    }
+  } else if (!CLOUDFLARE_AI_URL || !CLOUDFLARE_AI_TOKEN) {
+    throw Object.assign(new Error("Configure CLOUDFLARE_AI_URL e CLOUDFLARE_AI_TOKEN para usar Workers AI."), { status: 503 });
   }
 
   const current = body.current && typeof body.current === "object" ? body.current : {};
@@ -115,33 +150,29 @@ async function generate(body) {
     opcoes_motivacao: MOTIVATION,
     opcoes_urgencia: URGENCY
   };
-  const response = await fetch(OLLAMA_BASE + "/api/chat", {
+  const messages = [
+    {
+      role: "system",
+      content: "Você é analista de negócios de um sistema hospitalar de oftalmologia. Crie issue clara, objetiva e útil com base nos fatos; não invente nem repita. Siga orientacao_do_modelo recebida no relato. Título: até 12 palavras. requester, units e frequency: 12 a 20 palavras cada. problem: 25 a 35 palavras, com cenário e dificuldade. description: 35 a 50 palavras, com necessidade, sugestão concreta e resultado esperado. impacts, today e nonimplementation: 15 a 25 palavras cada. otherMotivation: 12 a 20 palavras se inferida. Não preencha tamanho com frases vagas. requester: nome/setor ou ausência e processo. units: locais ou unidade não especificada. frequency: periodicidade ou ausência. problem: o que ocorre e efeito. impacts: módulos, relatórios, filtros ou ausência de especificação. today: fluxo e contorno ou ausência. nonimplementation: consequência plausível, sem afirmar prejuízo como fato. motivation: opção compatível; se inferida, explique que é sugestão. urgency: pelo impacto; sem evidência maior, use Médio. classification: bug se função existente falha; requisito se é melhoria ou nova capacidade. Respeite tipo_solicitacao quando for bug ou requisito; em automático, classifique pelo relato. Não faça perguntas; questions deve ser []. Retorne somente JSON conforme o schema."
+    },
+    { role: "user", content: JSON.stringify(userData) }
+  ];
+  const cloudflare = AI_PROVIDER === "cloudflare";
+  const response = await fetch(cloudflare ? CLOUDFLARE_AI_URL + "/v1/draft" : OLLAMA_BASE + "/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(cloudflare ? { Authorization: "Bearer " + CLOUDFLARE_AI_TOKEN } : {}) },
     signal: AbortSignal.timeout(180000),
-    body: JSON.stringify({
-      model: MODEL,
-      stream: false,
-      think: false,
-      format: schema,
-      keep_alive: "15m",
-      options: { temperature: 0, num_predict: 560, num_ctx: Math.max(4096, Math.ceil((JSON.stringify(userData).length + 2500) / 2)) },
-      messages: [
-        {
-          role: "system",
-          content: "Você é analista de negócios de um sistema hospitalar de oftalmologia. Crie issue clara, objetiva e útil com base nos fatos; não invente nem repita. Siga orientacao_do_modelo recebida no relato. Título: até 12 palavras. requester, units e frequency: 12 a 20 palavras cada. problem: 25 a 35 palavras, com cenário e dificuldade. description: 35 a 50 palavras, com necessidade, sugestão concreta e resultado esperado. impacts, today e nonimplementation: 15 a 25 palavras cada. otherMotivation: 12 a 20 palavras se inferida. Não preencha tamanho com frases vagas. requester: nome/setor ou ausência e processo. units: locais ou unidade não especificada. frequency: periodicidade ou ausência. problem: o que ocorre e efeito. impacts: módulos, relatórios, filtros ou ausência de especificação. today: fluxo e contorno ou ausência. nonimplementation: consequência plausível, sem afirmar prejuízo como fato. motivation: opção compatível; se inferida, explique que é sugestão. urgency: pelo impacto; sem evidência maior, use Médio. classification: bug se função existente falha; requisito se é melhoria ou nova capacidade. Respeite tipo_solicitacao quando for bug ou requisito; em automático, classifique pelo relato. Não faça perguntas; questions deve ser []. Retorne somente JSON conforme o schema."
-        },
-        { role: "user", content: JSON.stringify(userData) }
-      ]
-    })
+    body: JSON.stringify(cloudflare
+      ? { model: aiModel(), messages, schema }
+      : { model: OLLAMA_MODEL, stream: false, think: false, format: schema, keep_alive: "15m", options: { temperature: 0, num_predict: 560, num_ctx: Math.max(4096, Math.ceil((JSON.stringify(userData).length + 2500) / 2)) }, messages })
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw Object.assign(new Error("Falha ao gerar rascunho no Ollama (HTTP " + response.status + "). " + detail.slice(0, 300)), { status: 502 });
+    throw Object.assign(new Error("Falha ao gerar rascunho em " + (cloudflare ? "Cloudflare Workers AI" : "Ollama") + " (HTTP " + response.status + "). " + detail.slice(0, 300)), { status: 502 });
   }
   const result = await response.json();
-  const content = result && result.message && result.message.content;
-  if (typeof content !== "string") throw Object.assign(new Error("O modelo local não retornou conteúdo."), { status: 502 });
+  const content = cloudflare ? result.response : result && result.message && result.message.content;
+  if (typeof content !== "string") throw Object.assign(new Error("O modelo de IA não retornou conteúdo."), { status: 502 });
   let draft;
   try { draft = JSON.parse(content); }
   catch {
@@ -182,7 +213,7 @@ async function generate(body) {
   if (!normalized.urgency) normalized.urgency = URGENCY[2];
   if (normalized.motivation === MOTIVATION[5] && !normalized.otherMotivation) normalized.otherMotivation = fallbackText.otherMotivation;
   normalized.questions = [];
-  return { draft: normalized, model: MODEL };
+  return { draft: normalized, model: aiModel() };
 }
 
 const draftJobs = new Map();
@@ -445,10 +476,14 @@ async function createGithubIssue(body, userId) {
   if (connection.githubUser) await ensureGithubOAuthIdentity(userId);
   connection = githubConnections.get(userId);
   const title = clean(body.title);
-  const issueBody = typeof body.body === "string" ? body.body.trim() : "";
+  const issueDescription = typeof body.body === "string" ? body.body.trim() : "";
   const requestedLabels = Array.isArray(body.labels) ? Array.from(new Set(body.labels.filter((label) => typeof label === "string").map((label) => label.trim()).filter(Boolean))).slice(0, 100) : [];
   if (!title) throw Object.assign(new Error("O título da issue é obrigatório."), { status: 400 });
-  if (!issueBody) throw Object.assign(new Error("O conteúdo da issue está vazio."), { status: 400 });
+  if (!issueDescription) throw Object.assign(new Error("O conteúdo da issue está vazio."), { status: 400 });
+  const requester = users.find((user) => user.id === userId);
+  const githubIdentity = githubOAuthIdentities.get(userId);
+  const githubLogin = connection.githubUser || (githubIdentity && githubIdentity.login);
+  const issueBody = issueDescription + "\n\n---\n**Aberta pela ferramenta por:** " + (requester ? requester.username : "Usuário autenticado") + (githubLogin ? " (GitHub: @" + githubLogin + ")" : "");
   const endpoint = "/repos/" + encodeURIComponent(connection.owner) + "/" + encodeURIComponent(connection.repo) + "/issues";
   const response = await githubApi(endpoint, connection.token, {
     method: "POST",
@@ -606,8 +641,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === "/api/github/disconnect" && method === "POST") { githubConnections.delete(userId); githubOAuthIdentities.delete(userId); return send(res, 200, { connected: false }); }
     if (pathname === "/api/github/issues" && method === "POST") return send(res, 201, await createGithubIssue(await readBody(req), userId));
     if (pathname === "/api/status" && method === "GET") {
-      try { const models = await getModels(); return send(res, 200, { available: true, model: MODEL, modelInstalled: models.some((name) => name === MODEL || name.startsWith(MODEL + ":")) }); }
-      catch { return send(res, 200, { available: false, model: MODEL, modelInstalled: false }); }
+      return send(res, 200, await aiStatus());
     }
     if (pathname === "/api/draft" && method === "POST") {
       const body = await readBody(req); const id = randomUUID();
@@ -645,7 +679,7 @@ const server = http.createServer(async (req, res) => {
 await initializeUsers();
 server.listen(PORT, process.env.HOST || (process.env.RENDER ? "0.0.0.0" : "127.0.0.1"), () => {
   console.log("Automação de issues disponível na porta " + PORT);
-  console.log("Modelo local: " + MODEL + " · Ollama: " + OLLAMA_BASE);
+  console.log(AI_PROVIDER === "cloudflare" ? "Workers AI: " + aiModel() : "Modelo local: " + OLLAMA_MODEL + " · Ollama: " + OLLAMA_BASE);
   console.log(users.length ? "Usuários cadastrados: " + users.length : "Configuração inicial: defina ADMIN_SETUP_KEY para criar a conta administradora.");
 });
 

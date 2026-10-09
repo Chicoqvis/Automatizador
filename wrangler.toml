@@ -1,0 +1,9 @@
+name = "automacao-issues-ai"
+main = "cloudflare-ai-worker.mjs"
+compatibility_date = "2026-10-09"
+
+[vars]
+CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+
+[ai]
+binding = "AI"
