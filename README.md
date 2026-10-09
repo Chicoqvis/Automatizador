@@ -55,7 +55,9 @@ O Worker serve a interface e as rotas da aplicação. Os relatos são enviados d
 
 O modelo padrão é `@cf/meta/llama-3.3-70b-instruct-fp8-fast`. O arquivo `cloudflare-ai-worker.mjs` é o proxy antigo de IA; o `wrangler.toml` agora publica `cloudflare-app-worker.mjs` como aplicação completa.
 
-Para a integração GitHub, o usuário pode conectar um token pessoal pela interface. OAuth da GitHub App permanece opcional e precisa das variáveis `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` e `GITHUB_APP_CALLBACK_URL` como secrets do Worker; o callback deve terminar em `/api/github/oauth/callback`.
+Para a integração GitHub, o usuário pode conectar um token pessoal pela interface. No Worker, o token fica criptografado no D1 por usuário; a interface não o grava no armazenamento do navegador. A caixa de lembrança salva somente o nome do repositório neste dispositivo. OAuth da GitHub App permanece opcional e precisa das variáveis `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` e `GITHUB_APP_CALLBACK_URL` como secrets do Worker; o callback deve terminar em `/api/github/oauth/callback`.
+
+Veja [MANUAL_GITHUB.md](MANUAL_GITHUB.md) para orientar usuários a criar um token pessoal e localizar o repositório.
 
 ## Dados e privacidade
 
