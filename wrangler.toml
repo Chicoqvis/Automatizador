@@ -1,9 +1,21 @@
 name = "automacao-issues-ai"
-main = "cloudflare-ai-worker.mjs"
+main = "cloudflare-app-worker.mjs"
 compatibility_date = "2026-10-09"
 
 [vars]
 CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+APP_BASE_URL = "https://automacao-issues-ai.automacao-issue-chico.workers.dev"
 
 [ai]
 binding = "AI"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "automatizador-db"
+database_id = "REPLACE_AFTER_CREATING_D1"
+migrations_dir = "migrations"

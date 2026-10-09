@@ -1,6 +1,9 @@
 # Automação de issues
 
-O servidor Node.js usa Ollama por padrão para manter a execução local. Para usar Cloudflare Workers AI, o app Node.js encaminha a geração para um Worker privado com binding `AI`; autenticação, sessões, dados e integração com GitHub continuam no servidor Node.js.
+Há duas versões independentes:
+
+- **Local:** servidor Node.js e Ollama; continua funcionando com `node server.mjs`.
+- **Pública:** Cloudflare Workers com Workers AI e D1 para usuários, sessões e conexões GitHub.
 
 ## Execução local com Ollama
 
@@ -13,35 +16,47 @@ node server.mjs
 
 Abra `http://localhost:4173`. Para trocar o modelo, defina `OLLAMA_MODEL` antes de iniciar o servidor.
 
-## Cloudflare Workers AI
+## Publicar a versão gratuita no Cloudflare
 
-1. Instale e autentique o Wrangler (`npx wrangler login`).
-2. Defina um segredo compartilhado forte, sem o prefixo `Bearer`:
+O Worker serve a interface e as rotas da aplicação. Os relatos são enviados diretamente ao binding Workers AI. D1 mantém as contas e sessões entre reinicializações.
 
-   ```powershell
-   $secret = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
-   $secret | npx wrangler secret put APP_SHARED_SECRET
-   ```
-
-3. Publique o Worker:
+1. Instale/autentique o Wrangler (`npx.cmd wrangler login`) e crie o banco:
 
    ```powershell
-   npx wrangler deploy
+   npx.cmd wrangler d1 create automatizador-db
    ```
 
-4. Configure o servidor Node.js que hospeda o app para usar o URL publicado do Worker e o mesmo segredo:
+   Copie o `database_id` que o comando mostrar e substitua `REPLACE_AFTER_CREATING_D1` em `wrangler.toml`.
+
+2. Aplique a migração ao banco remoto:
 
    ```powershell
-   $env:AI_PROVIDER = 'cloudflare'
-   $env:CLOUDFLARE_AI_URL = 'https://automacao-issues-ai.<sua-conta>.workers.dev'
-   $env:CLOUDFLARE_AI_TOKEN = $secret
-   node server.mjs
+   npx.cmd wrangler d1 migrations apply automatizador-db --remote
    ```
 
-O modelo padrão é `@cf/meta/llama-3.3-70b-instruct-fp8-fast`. Para escolher outro modelo compatível com JSON Mode, defina `CLOUDFLARE_AI_MODEL` no ambiente do servidor e em `wrangler.toml` antes de publicar.
+3. Configure a chave para criar a primeira conta administradora e a chave que criptografa os tokens GitHub:
 
-O segredo `APP_SHARED_SECRET` deve ser configurado também como variável `CLOUDFLARE_AI_TOKEN` no ambiente de produção do servidor Node.js. Não o coloque em `index.html` nem em repositório público. Para desenvolvimento local do Worker, use `npx wrangler secret put APP_SHARED_SECRET` no ambiente remoto; o Ollama permanece independente e é o provedor padrão.
+   ```powershell
+   $adminSetupKey = [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
+   $adminSetupKey | npx.cmd wrangler secret put ADMIN_SETUP_KEY
+   $githubKey = node -p "require('node:crypto').randomBytes(32).toString('base64url')"
+   $githubKey | npx.cmd wrangler secret put GITHUB_TOKEN_ENCRYPTION_KEY
+   ```
+
+   Guarde `adminSetupKey` para a primeira configuração. Não publique essas chaves no repositório. A chave GitHub precisa permanecer igual; perder ou trocar essa chave impede a descriptografia das conexões GitHub já salvas.
+
+4. Publique o Worker e os arquivos da interface:
+
+   ```powershell
+   npx.cmd wrangler deploy
+   ```
+
+   O endereço será `https://automacao-issues-ai.<subdominio-da-conta>.workers.dev`. Acesse-o e use `adminSetupKey` no formulário para criar a conta administradora.
+
+O modelo padrão é `@cf/meta/llama-3.3-70b-instruct-fp8-fast`. O arquivo `cloudflare-ai-worker.mjs` é o proxy antigo de IA; o `wrangler.toml` agora publica `cloudflare-app-worker.mjs` como aplicação completa.
+
+Para a integração GitHub, o usuário pode conectar um token pessoal pela interface. OAuth da GitHub App permanece opcional e precisa das variáveis `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` e `GITHUB_APP_CALLBACK_URL` como secrets do Worker; o callback deve terminar em `/api/github/oauth/callback`.
 
 ## Dados e privacidade
 
-No modo Cloudflare, o relato enviado para gerar o rascunho é processado pelo Workers AI da conta Cloudflare configurada. Não inclua dados pessoais ou identificáveis de pacientes. A autenticação, os usuários e as conexões do GitHub continuam usando o armazenamento em arquivo e a memória do servidor Node.js; este Worker não substitui o servidor da aplicação.
+No modo público, relatos são processados pelo Workers AI da conta Cloudflare. Tokens GitHub são criptografados antes de serem guardados no D1. Não inclua dados pessoais ou identificáveis de pacientes. A versão local continua usando Ollama e `data/users.json`.
