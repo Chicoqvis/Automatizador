@@ -1,0 +1,2 @@
+# Automatizador
+Automatizador de issues
