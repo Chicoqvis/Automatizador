@@ -17,5 +17,5 @@ run_worker_first = true
 [[d1_databases]]
 binding = "DB"
 database_name = "automatizador-db"
-database_id = "REPLACE_AFTER_CREATING_D1"
+database_id = "12863ba9-ef91-4865-a029-5edbb2221dc8"
 migrations_dir = "migrations"

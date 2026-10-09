@@ -68,7 +68,7 @@ function toBytes(value) { return Uint8Array.from(atob(value.replace(/-/g, "+").r
 function toB64(bytes) { return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
 async function passwordHash(password, salt = randomToken(16)) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: toBytes(salt), iterations: 120_000, hash: "SHA-256" }, key, 256);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: toBytes(salt), iterations: 100_000, hash: "SHA-256" }, key, 256);
   return { salt, hash: hex(bits) };
 }
 async function verifyPassword(password, user) {

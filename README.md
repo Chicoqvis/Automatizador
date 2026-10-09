@@ -60,3 +60,15 @@ Para a integração GitHub, o usuário pode conectar um token pessoal pela inter
 ## Dados e privacidade
 
 No modo público, relatos são processados pelo Workers AI da conta Cloudflare. Tokens GitHub são criptografados antes de serem guardados no D1. Não inclua dados pessoais ou identificáveis de pacientes. A versão local continua usando Ollama e `data/users.json`.
+
+### Antes de enviar ao GitHub
+
+Não envie `users.json`, `data/users.json`, `wrangler-account.json`, arquivos `.env*` ou `.dev.vars`. Se algum deles já estiver rastreado pelo Git, remova-o do próximo commit sem apagar sua cópia local:
+
+```powershell
+git rm --cached --ignore-unmatch users.json data/users.json wrangler-account.json
+git add .gitignore README.md wrangler.toml public/index.html migrations/0001_initial.sql
+git status --short
+```
+
+Revise a saída de `git status` antes de fazer o commit. A remoção do próximo commit não apaga esses arquivos do histórico anterior do repositório; como `users.json` contém hash e salt de senha, remova-o também do histórico e troque a senha da conta se ele continha uma conta real.
