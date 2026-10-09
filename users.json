@@ -5,7 +5,7 @@
     "role": "admin",
     "active": true,
     "createdAt": 1791510645357,
-    "salt": "caeaab14159f0b043e43c49ff46b096b",
-    "hash": "af1f4a1fde006df587e413e896df5023fa8ae43cc07473b2f95875ab9060928dd70ff808dc40a76726a446d856924dc769b0224fe09dbb5e06f64fa82983c556"
+    "salt": "b6f367aa884d259e1910a068bdb6d4a1",
+    "hash": "859259ef0d2cacfe8e2b565ba72548ab9aa8f7d9eb4b30dcd10ce3370491c16cf0cf719bd99296a5d5fb2cf8240c78349a277f801b42ce8f1c90d31e7261383c"
   }
 ]

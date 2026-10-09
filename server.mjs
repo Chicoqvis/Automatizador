@@ -224,8 +224,13 @@ async function hashPassword(password, salt = randomBytes(16).toString("hex")) {
 }
 
 async function verifyPassword(password, user) {
+  if (!user || typeof user.salt !== "string") return false;
+  const storedHash = typeof user.hash === "string" ? user.hash : user.passwordHash;
+  if (typeof storedHash !== "string" || !/^[a-f0-9]{128}$/i.test(storedHash)) return false;
   const candidate = await hashPassword(password, user.salt);
-  return timingSafeEqual(Buffer.from(candidate.hash, "hex"), Buffer.from(user.passwordHash, "hex"));
+  const candidateBuffer = Buffer.from(candidate.hash, "hex");
+  const storedBuffer = Buffer.from(storedHash, "hex");
+  return candidateBuffer.length === storedBuffer.length && timingSafeEqual(candidateBuffer, storedBuffer);
 }
 
 function safeUser(user) {
@@ -242,7 +247,7 @@ async function initializeUsers() {
 }
 
 function validUsername(value) { return typeof value === "string" && /^[a-zA-Z0-9._-]{3,32}$/.test(value); }
-function validPassword(value) { return typeof value === "string" && value.length >= 12 && value.length <= 128; }
+function validPassword(value) { return typeof value === "string" && value.length > 0 && value.length <= 128; }
 function constantTimeTextEqual(left, right) {
   const a = Buffer.from(String(left)); const b = Buffer.from(String(right));
   if (a.length !== b.length) { timingSafeEqual(a, a); return false; }
@@ -510,7 +515,7 @@ const server = http.createServer(async (req, res) => {
       if (!process.env.ADMIN_SETUP_KEY) return send(res, 503, { error: "Configure ADMIN_SETUP_KEY no ambiente do servidor para iniciar a conta administradora." });
       const body = await readBody(req);
       if (!constantTimeTextEqual(clean(body.setupKey), process.env.ADMIN_SETUP_KEY)) return send(res, 403, { error: "Chave inicial incorreta." });
-      if (!validUsername(body.username) || !validPassword(body.password)) return send(res, 400, { error: "Use um usuário de 3 a 32 caracteres e uma senha com pelo menos 12 caracteres." });
+      if (!validUsername(body.username) || !validPassword(body.password)) return send(res, 400, { error: "Use um usuário de 3 a 32 caracteres e uma senha de até 128 caracteres." });
       const credentials = await hashPassword(body.password);
       const admin = { id: randomUUID(), username: body.username, role: "admin", active: true, createdAt: Date.now(), ...credentials };
       users.push(admin); await saveUsers();
@@ -564,7 +569,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === "/api/admin/users" && method === "POST") {
       if (session.user.role !== "admin") return send(res, 403, { error: "Somente administradores podem gerenciar contas." });
       const body = await readBody(req);
-      if (!validUsername(body.username) || !validPassword(body.password)) return send(res, 400, { error: "Use um usuário de 3 a 32 caracteres e uma senha com pelo menos 12 caracteres." });
+      if (!validUsername(body.username) || !validPassword(body.password)) return send(res, 400, { error: "Use um usuário de 3 a 32 caracteres e uma senha de até 128 caracteres." });
       if (users.some((item) => item.username.toLowerCase() === body.username.toLowerCase())) return send(res, 409, { error: "Esse usuário já existe." });
       const credentials = await hashPassword(body.password);
       const user = { id: randomUUID(), username: body.username, role: body.role === "admin" ? "admin" : "user", active: true, createdAt: Date.now(), ...credentials };
@@ -581,7 +586,7 @@ const server = http.createServer(async (req, res) => {
         if (!target.active) { githubConnections.delete(target.id); githubOAuthIdentities.delete(target.id); for (const [token, item] of sessions) if (item.userId === target.id) sessions.delete(token); }
       }
       if (body.password !== undefined) {
-        if (!validPassword(body.password)) return send(res, 400, { error: "A senha deve ter pelo menos 12 caracteres." });
+        if (!validPassword(body.password)) return send(res, 400, { error: "A senha não pode ficar vazia e deve ter até 128 caracteres." });
         Object.assign(target, await hashPassword(body.password));
         for (const [token, item] of sessions) if (item.userId === target.id && token !== parseCookies(req.headers.cookie).automacao_session) sessions.delete(token);
       }
