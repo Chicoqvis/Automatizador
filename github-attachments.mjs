@@ -21,7 +21,8 @@ export async function uploadGithubAttachment(connection,name,bytes,fetcher=fetch
   if(!Number.isSafeInteger(repo.id))throw error('Repositório inválido.',502);
   const url=new URL('https://uploads.github.com/user-attachments/assets');
   url.search=new URLSearchParams({name,content_type:type,repository_id:String(repo.id)}).toString();
-  const response=await fetcher(url,{method:'POST',headers:{...headers,'Content-Type':'application/octet-stream'},body:bytes,redirect:'error',signal:AbortSignal.timeout(120000)});
+  const response=await fetcher(url,{method:'POST',headers:{...headers,'Content-Type':'application/octet-stream'},body:bytes,redirect:'manual',signal:AbortSignal.timeout(120000)});
+  if(response.status>=300&&response.status<400)throw error("O GitHub redirecionou o upload. O arquivo não foi enviado; tente novamente.",502);
   if(!response.ok){const detail=await response.json().catch(()=>({}));throw error(response.status===404||response.status===403?'O GitHub recusou o anexo. Confira o acesso de escrita ao repositório e as permissões do token.':detail.message||'Não foi possível enviar o anexo ao GitHub.',response.status)}
   const result=await response.json();let asset;
   try{asset=new URL(result.url)}catch{throw error('O GitHub não retornou um link de anexo válido.',502)}
