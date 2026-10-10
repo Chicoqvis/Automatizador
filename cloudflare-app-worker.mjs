@@ -1,5 +1,6 @@
 import { dailyAiQuotaError } from "./ai-quota.mjs";
 import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mjs';
+import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
@@ -232,13 +233,14 @@ async function createGithubIssue(env, body, userId) {
   if (!title) throw fail("O título da issue é obrigatório.");
   if (!description) throw fail("O conteúdo da issue está vazio.");
   const user = await env.DB.prepare("SELECT username FROM users WHERE id=?").bind(userId).first();
-  const text = description + "\n\n---\n**Aberta pela ferramenta por:** " + (user?.username || "Usuário autenticado") + (connection.githubUser ? " (GitHub: @" + connection.githubUser + ")" : "");
+  const text = description + "\n\n---\n**Aberta pela ferramenta por:** " + (user?.username || "Usuário autenticado") + (connection.githubUser ? " (GitHub: @" + connection.githubUser + ")" : "")+'\n'+issueMarker(body.requestId);
   const response = await githubApi(`/repos/${encodeURIComponent(connection.owner)}/${encodeURIComponent(connection.repo)}/issues`, connection.token, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, body: text, labels })
   });
-  if (!response.ok) throw fail(await githubError(response), response.status === 401 || response.status === 403 || response.status === 404 ? response.status : 502);
+  if (!response.ok) throw Object.assign(fail(await githubError(response), response.status === 401 || response.status === 403 || response.status === 404 ? response.status : 502),{creationRejected:response.status>=400&&response.status<500});
   const issue = await response.json();
   const result = { number: issue.number, title: issue.title, url: issue.html_url, repository: connection.owner + "/" + connection.repo, labels: (issue.labels || []).map((label) => label.name) };
+  if(typeof body._onCreated==='function')await body._onCreated(result);
   const missing = labels.filter((label) => !result.labels.includes(label));
   if (missing.length) {
     const lr = await githubApi(`/repos/${encodeURIComponent(connection.owner)}/${encodeURIComponent(connection.repo)}/issues/${issue.number}/labels`, connection.token, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ labels: missing }) });
@@ -381,6 +383,18 @@ async function route(request, env) {
     return json(quotaSummary(row));
   }
   if(path==="/api/memory"&&method==="GET"){const row=await env.DB.prepare("SELECT COUNT(*) AS count FROM account_memory WHERE user_id=?").bind(userId).first();return json({count:row.count})}
+  if(path==='/api/memory/entries'&&method==='GET'){
+    const {results}=await env.DB.prepare('SELECT repository,number,title,created_at FROM account_memory WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();
+    return json({entries:results});
+  }
+  if(path==='/api/memory/entry'&&['GET','DELETE'].includes(method)){
+    const repository=(url.searchParams.get('repository')||'').toLowerCase(),number=Number(url.searchParams.get('number'));
+    if(!repository||!Number.isSafeInteger(number)||number<1)throw fail('Memória inválida.');
+    const entry=await env.DB.prepare('SELECT repository,number,title,content,created_at FROM account_memory WHERE user_id=? AND repository=? AND number=?').bind(userId,repository,number).first();
+    if(!entry)throw fail('Memória não encontrada na sua conta.',404);
+    if(method==='GET')return json({entry});
+    await env.DB.prepare('DELETE FROM account_memory WHERE user_id=? AND repository=? AND number=?').bind(userId,repository,number).run();return json({ok:true});
+  }
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
   if(path==='/api/history'&&method==='POST'){
@@ -482,13 +496,14 @@ async function route(request, env) {
     return json({ connected: false });
   }
   if (path === "/api/github/issues" && method === "POST") {
-    const body=await readBody(request),result=await createGithubIssue(env,body,userId);try{await env.DB.prepare("INSERT OR REPLACE INTO account_memory(user_id,repository,number,title,content,created_at) VALUES(?,?,?,?,?,?)").bind(userId,result.repository.toLowerCase(),result.number,result.title,memoryContent(body),Date.now()).run()}catch(error){result.memoryError="A issue foi criada, mas não foi possível guardar a memória da conta."}try{const entry=validateHistoryEntry({...result,createdAt:Date.now()});await env.DB.prepare("INSERT OR REPLACE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)").bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt).run();result.createdAt=entry.createdAt}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return json(result,201);
+    const body=await readBody(request),connection=await githubConnection(env,userId);if(!connection)throw fail("Conecte um repositório GitHub antes de criar a issue.",409);const result=await recoverableIssue(body,connection.owner+"/"+connection.repo,d1OperationStore(env.DB,userId),payload=>createGithubIssue(env,payload,userId),(id,started)=>findRecoveredIssue(connection,id,started,githubApi));if(!result.replayed)try{await env.DB.prepare("INSERT OR REPLACE INTO account_memory(user_id,repository,number,title,content,created_at) VALUES(?,?,?,?,?,?)").bind(userId,result.repository.toLowerCase(),result.number,result.title,memoryContent(body),Date.now()).run()}catch(error){result.memoryError="A issue foi criada, mas não foi possível guardar a memória da conta."}try{const entry=validateHistoryEntry({...result,createdAt:Date.now()});await env.DB.prepare("INSERT OR REPLACE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)").bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt).run();result.createdAt=entry.createdAt}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return json(result,201);
   }
   if (path === "/api/status" && method === "GET") return json({ provider: "cloudflare", available: true, model: env.CLOUDFLARE_AI_MODEL || MODEL_DEFAULT, modelInstalled: true });
   if (path === "/api/draft" && method === "POST") return json(await generateDraft(env, await readBody(request),userId));
   if (path.startsWith("/api/")) throw fail("Rota não encontrada.", 404);
   if(path==="/public/workflow-ui.js" && ["GET","HEAD"].includes(method))return env.ASSETS.fetch(new Request(new URL("/workflow-ui.js",request.url),{method,headers:request.headers}));
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
+  if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;

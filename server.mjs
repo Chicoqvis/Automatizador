@@ -3,6 +3,7 @@ import { validateSavedDraft, findSimilarIssues, workflowError, validateHistoryEn
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
 import { dailyAiQuotaError } from './ai-quota.mjs';
+import { recoverableIssue, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -495,7 +496,7 @@ async function createGithubIssue(body, userId) {
   const requester = users.find((user) => user.id === userId);
   const githubIdentity = githubOAuthIdentities.get(userId);
   const githubLogin = connection.githubUser || (githubIdentity && githubIdentity.login);
-  const issueBody = issueDescription + "\n\n---\n**Aberta pela ferramenta por:** " + (requester ? requester.username : "Usuário autenticado") + (githubLogin ? " (GitHub: @" + githubLogin + ")" : "");
+  const issueBody = issueDescription + "\n\n---\n**Aberta pela ferramenta por:** " + (requester ? requester.username : "Usuário autenticado") + (githubLogin ? " (GitHub: @" + githubLogin + ")" : "")+'\n'+issueMarker(body.requestId);
   const endpoint = "/repos/" + encodeURIComponent(connection.owner) + "/" + encodeURIComponent(connection.repo) + "/issues";
   const response = await githubApi(endpoint, connection.token, {
     method: "POST",
@@ -505,10 +506,11 @@ async function createGithubIssue(body, userId) {
   if (!response.ok) {
     const message = await githubError(response);
     if (response.status === 401) githubConnections.delete(userId);
-    throw Object.assign(new Error(message), { status: response.status === 401 ? 401 : response.status === 403 ? 403 : response.status === 404 ? 404 : 502 });
+    throw Object.assign(new Error(message), { status: response.status === 401 ? 401 : response.status === 403 ? 403 : response.status === 404 ? 404 : 502,creationRejected:response.status>=400&&response.status<500 });
   }
   const issue = await response.json();
   const result = { number: issue.number, title: issue.title, url: issue.html_url, repository: connection.owner + "/" + connection.repo };
+  if(typeof body._onCreated==='function')await body._onCreated({...result,labels:(issue.labels||[]).map(x=>x.name)});
   let attachedLabels = Array.isArray(issue.labels) ? issue.labels.map((label) => label.name) : [];
   const missingLabels = requestedLabels.filter((label) => !attachedLabels.includes(label));
   if (missingLabels.length) {
@@ -551,6 +553,13 @@ async function createGithubIssue(body, userId) {
   return result;
 }
 function localMemory(){const file=path.join(DATA_DIR,'account-memory.json');return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]}
+function localOperationStore(userId){
+  const file=path.join(DATA_DIR,'issue-operations.json');
+  function readAll(){return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]}
+  function saveAll(rows){fs.mkdirSync(DATA_DIR,{recursive:true});fs.writeFileSync(file+'.tmp',JSON.stringify(rows));fs.renameSync(file+'.tmp',file)}
+  const match=(row,id)=>row.user_id===userId&&row.request_id===id;
+  return {async read(id){return readAll().find(row=>match(row,id))},async claim(id,fingerprint){const rows=readAll();if(rows.some(row=>match(row,id)))return false;rows.push({user_id:userId,request_id:id,fingerprint,state:'pending',started_at:Date.now()});saveAll(rows);return true},async retry(id){const rows=readAll(),row=rows.find(row=>match(row,id));if(row?.state!=='rejected')return false;row.state='pending';row.started_at=Date.now();saveAll(rows);return true},async save(id,state,result){const rows=readAll(),row=rows.find(row=>match(row,id));row.state=state;row.result=result?JSON.stringify(result):null;saveAll(rows)}};
+}
 function persistLocalMemory(rows){fs.mkdirSync(DATA_DIR,{recursive:true});const file=path.join(DATA_DIR,'account-memory.json');fs.writeFileSync(file+'.tmp',JSON.stringify(rows));fs.renameSync(file+'.tmp',file)}
 function saveLocalMemory(userId,result,body){const rows=localMemory().filter(row=>!(row.userId===userId&&row.repository===result.repository.toLowerCase()&&row.number===result.number));rows.push({userId,repository:result.repository.toLowerCase(),number:result.number,title:result.title,content:memoryContent(body),created_at:Date.now()});persistLocalMemory(rows)}
 function localHistory(){const file=path.join(DATA_DIR,'issue-history.json');return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]}
@@ -598,6 +607,15 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith("/api/") && !session) return send(res, 401, { error: "Faça login para continuar." });
     const userId = session && session.user.id;
     if(pathname==="/api/memory"&&method==="GET")return send(res,200,{count:localMemory().filter(row=>row.userId===userId).length});
+    if(pathname==='/api/memory/entries'&&method==='GET')return send(res,200,{entries:localMemory().filter(row=>row.userId===userId).sort((a,b)=>b.created_at-a.created_at).slice(0,500).map(({repository,number,title,created_at})=>({repository,number,title,created_at}))});
+    if(pathname==='/api/memory/entry'&&['GET','DELETE'].includes(method)){
+      const repository=(url.searchParams.get('repository')||'').toLowerCase(),number=Number(url.searchParams.get('number'));
+      if(!repository||!Number.isSafeInteger(number)||number<1)return send(res,400,{error:'Memória inválida.'});
+      const rows=localMemory(),entry=rows.find(row=>row.userId===userId&&row.repository===repository&&row.number===number);
+      if(!entry)return send(res,404,{error:'Memória não encontrada na sua conta.'});
+      if(method==='GET'){const {userId:ignored,...safe}=entry;return send(res,200,{entry:safe})}
+      persistLocalMemory(rows.filter(row=>row!==entry));return send(res,200,{ok:true});
+    }
     if(pathname==="/api/memory"&&method==="DELETE"){persistLocalMemory(localMemory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
     if(pathname==='/api/history'&&method==='GET')return send(res,200,{issues:localHistory().filter(row=>row.userId===userId).map(row=>row.entry).sort((a,b)=>b.createdAt-a.createdAt).slice(0,500)});
     if(pathname==='/api/history'&&method==='POST'){const body=await readBody(req,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw workflowError('Envie até 200 registros.');addLocalHistory(userId,body.issues);return send(res,200,{ok:true})}
@@ -690,7 +708,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === "/api/github/connect" && method === "POST") return send(res, 200, await connectGithub(await readBody(req), userId));
     if (pathname === "/api/github/options" && method === "GET") return send(res, 200, await githubOptions(userId));
     if (pathname === "/api/github/disconnect" && method === "POST") { githubConnections.delete(userId); githubOAuthIdentities.delete(userId); return send(res, 200, { connected: false }); }
-    if (pathname === "/api/github/issues" && method === "POST") {const body=await readBody(req),result=await createGithubIssue(body,userId);try{saveLocalMemory(userId,result,body)}catch(error){result.memoryError="A issue foi criada, mas não foi possível guardar a memória da conta."}try{result.createdAt=Date.now();addLocalHistory(userId,[result])}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return send(res,201,result)}
+    if (pathname === "/api/github/issues" && method === "POST") {const body=await readBody(req),connection=githubConnections.get(userId);if(!connection)throw workflowError("Conecte um repositório GitHub antes de criar a issue.",409);if(connection.githubUser)await ensureGithubOAuthIdentity(userId);const result=await recoverableIssue(body,connection.owner+"/"+connection.repo,localOperationStore(userId),payload=>createGithubIssue(payload,userId),(id,started)=>findRecoveredIssue(githubConnections.get(userId),id,started,githubApi));if(!result.replayed)try{saveLocalMemory(userId,result,body)}catch(error){result.memoryError="A issue foi criada, mas não foi possível guardar a memória da conta."}try{result.createdAt=Date.now();addLocalHistory(userId,[result])}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return send(res,201,result)}
     if (pathname === "/api/status" && method === "GET") {
       return send(res, 200, await aiStatus());
     }
@@ -714,7 +732,7 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (fileName !== "/index.html" && fileName!=="/public/workflow-ui.js" && fileName!=="/public/quota-ui.js") { res.writeHead(404); return res.end("Não encontrado."); }
+    if (fileName !== "/index.html" && fileName!=="/public/workflow-ui.js" && fileName!=="/public/quota-ui.js" && fileName!=="/public/memory-ui.js") { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {

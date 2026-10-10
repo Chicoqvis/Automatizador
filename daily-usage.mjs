@@ -2,8 +2,10 @@ export function quotaSummary(row, now = Date.now()) {
   const day = new Date(now).toISOString().slice(0,10);
   const resetAt = Date.parse(day+'T00:00:00Z')+86400000;
   const quota = (name,used,limit) => ({name,used,limit,remaining:Math.max(0,limit-used)});
-  return {day,resetAt,updatedAt:now,startedAt:row?.started_at||now,estimated:true,aiCalls:row?.ai_calls||0,aiUnknown:row?.ai_unknown||0,
+  const result = {day,resetAt,updatedAt:now,startedAt:row?.started_at||now,estimated:true,aiCalls:row?.ai_calls||0,aiUnknown:row?.ai_unknown||0,
     quotas:[{...quota('IA — neurônios',row?.ai_exhausted?10000:Math.ceil(row?.neurons||0),10000),remaining:row?.ai_unknown&&!row?.ai_exhausted?null:Math.max(0,10000-(row?.ai_exhausted?10000:Math.ceil(row?.neurons||0)))},quota('Site — requisições',row?.requests||0,100000),quota('Banco — linhas lidas',row?.rows_read||0,5000000),quota('Banco — linhas gravadas',row?.rows_written||0,100000)]};
+  result.alerts=result.quotas.filter(q=>q.remaining!==null&&q.used/q.limit>=0.8).map(q=>({name:q.name,threshold:q.used/q.limit>=0.95?95:80,percent:Math.min(100,Math.floor(q.used/q.limit*100)),exhausted:q.remaining===0}));
+  return result;
 }
 
 export function measuredAiUsage(result, model) {

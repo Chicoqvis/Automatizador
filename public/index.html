@@ -137,6 +137,7 @@ async function loadUsers(){const data=await jsonRequest("/api/admin/users"),list
 })();
 </script>
 <script src="/public/workflow-ui.js"></script>
+<script src="/public/memory-ui.js"></script>
 <script>
 window.authReady.then(function(authorized){if(!authorized)return;(function(){
 const ids=["title","requester","date","units","frequency","problem","description","impacts","today","nonimplementation","motivation","otherMotivation","urgency"];
@@ -149,6 +150,13 @@ try{$("rememberGithubRepo").checked=localStorage.getItem(rememberGithubRepoKey)=
 $("rememberGithubRepo").addEventListener("change",function(){try{localStorage.setItem(rememberGithubRepoKey,this.checked?"true":"false");if(!this.checked)localStorage.removeItem(githubRepoKey);else if($("githubRepo").value.trim())localStorage.setItem(githubRepoKey,$("githubRepo").value.trim())}catch(e){}});
 $("githubRepo").addEventListener("input",function(){if($("rememberGithubRepo").checked){try{localStorage.setItem(githubRepoKey,this.value.trim())}catch(e){}}});
 function toast(s){$("toast").textContent=s;$("toast").classList.add("show");setTimeout(function(){$("toast").classList.remove("show")},2600)}
+function retryAction(container,label,action){const button=document.createElement('button');button.type='button';button.className='btn soft';button.textContent=label;button.style.margin='8px 0';button.addEventListener('click',async()=>{button.disabled=true;try{await action()}finally{if(button.isConnected)button.disabled=false}});container.append(document.createElement('br'),button);return button}
+const pendingIssueKey='automacao.pendingIssue.v1.'+userStorageSuffix;let pendingIssue=null,issueSubmitting=false,draftStorageWarning=false;
+try{const saved=JSON.parse(localStorage.getItem(pendingIssueKey)||'null');if(saved?.requestId&&saved.expectedRepository&&typeof saved.body==='string'&&typeof saved.title==='string')pendingIssue=saved}catch{}
+const issueRecoveryBox=document.createElement('div');issueRecoveryBox.className='github-feedback error';issueRecoveryBox.id='issueRecovery';$('githubResult').after(issueRecoveryBox);
+function rememberPendingIssue(payload){pendingIssue=payload;try{if(payload)localStorage.setItem(pendingIssueKey,JSON.stringify(payload));else localStorage.removeItem(pendingIssueKey)}catch{}renderIssueRecovery()}
+function renderIssueRecovery(){issueRecoveryBox.replaceChildren();issueRecoveryBox.hidden=!pendingIssue;if(!pendingIssue)return;issueRecoveryBox.append(document.createTextNode('Envio pendente preservado: '+pendingIssue.title+' · '+pendingIssue.expectedRepository+'. Verifique e recupere a tentativa antes de iniciar outra.'));retryAction(issueRecoveryBox,'Verificar e recuperar envio',()=>submitIssue(pendingIssue.title,pendingIssue.body,$('createIssue'),'',pendingIssue));retryAction(issueRecoveryBox,'Descartar tentativa',()=>{if(issueSubmitting){toast('Aguarde a verificação do envio.');return}if(confirm('A tentativa pode já ter criado uma issue. Confira no GitHub antes de descartar. Descartar não cancela uma operação em andamento. Deseja descartar somente a tentativa salva?'))rememberPendingIssue(null)})}
+renderIssueRecovery();
 if(new URLSearchParams(location.search).get("github")==="connected"){history.replaceState(null,"",location.pathname);setTimeout(function(){toast("Conta GitHub autorizada. Informe o repositório para conectar.")},150)}
 function renderSavedNarratives(selectedId){
   const select=$("savedNarrativeSelect"),previous=selectedId||select.value;select.replaceChildren(new Option("Selecionar um relato salvo",""));
@@ -220,7 +228,7 @@ $("deleteSavedNarrative").addEventListener("click",function(){
   savedNarratives=savedNarratives.filter(function(saved){return saved.id!==id});localStorage.setItem(narrativesKey,JSON.stringify(savedNarratives));renderSavedNarratives();$("savedNarrativeStatus").textContent="Relato salvo excluído.";
 });
 $("savedNarrativeSelect").addEventListener("change",function(){const selected=!!this.value;$("useSavedNarrative").disabled=!selected;$("deleteSavedNarrative").disabled=!selected});
-const fieldAttachments={};let attachmentUploads=0;
+const fieldAttachments={},failedAttachments={};let attachmentUploads=0;
 const attachmentFields=['problem','description','impacts','today','nonimplementation','otherMotivation'];
 const attachmentViews={};
 function renderFieldAttachments(id){
@@ -245,9 +253,10 @@ async function attachFiles(id,files,status){
       const response=await fetch('/api/github/attachments?name='+encodeURIComponent(file.name),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
       const item=await response.json();if(!response.ok)throw new Error(item.error||'Falha ao enviar o arquivo.');
       (fieldAttachments[id]||(fieldAttachments[id]=[])).push(item);renderFieldAttachments(id);status.textContent='Anexo adicionado.';
-    }catch(error){status.textContent=error.message}
+    }catch(error){(failedAttachments[id]||(failedAttachments[id]=[])).push({file,error:error.message});status.textContent=error.message}
     finally{attachmentUploads--;update()}
   }
+  if(failedAttachments[id]?.length){status.textContent='Não foi possível enviar: '+failedAttachments[id].map(item=>item.file.name).join(', ')+'. Os arquivos foram mantidos nesta aba para tentar novamente. Não recarregue a página antes de reenviar.';retryAction(status,'Tentar enviar anexos novamente',()=>{const retained=failedAttachments[id].map(item=>item.file);failedAttachments[id]=[];return attachFiles(id,retained,status)});retryAction(status,'Descartar anexos pendentes',()=>{failedAttachments[id]=[];status.textContent='Anexos pendentes descartados.';update()});update()}
 }
 function setupAttachments(){
   attachmentFields.forEach(function(id){
@@ -284,16 +293,17 @@ function update(){
   const isOther=$("motivation").value.indexOf("Outras")===0;
   $("otherMotivationField").hidden=!isOther;
   if(!isOther)$("otherMotivation").value="";
-  const count=required.filter(function(id){return $(id).value.trim()}).length;$("createIssue").disabled=!githubConnected||attachmentUploads>0||count<required.length;
+  const count=required.filter(function(id){return $(id).value.trim()}).length;$("createIssue").disabled=!githubConnected||issueSubmitting||attachmentUploads>0||Object.values(failedAttachments).some(items=>items.length)||count<required.length;
   $("progressBar").style.width=Math.round(count/required.length*100)+"%";
   $("progressText").textContent=count===required.length?"Todos os campos obrigatórios preenchidos":count+" de "+required.length+" campos obrigatórios preenchidos";
   $("checklist").innerHTML=required.map(function(id){const done=!!$(id).value.trim();return '<div class="item '+(done?"done":"")+'"><span class="mark">'+(done?"✓":"")+'</span><span>'+names[id]+'</span></div>'}).join("");
-  const draft={};ids.forEach(function(id){draft[id]=$(id).value});draft.__attachments=fieldAttachments;localStorage.setItem(key,JSON.stringify(draft));
+  const draft={};ids.forEach(function(id){draft[id]=$(id).value});draft.__attachments=fieldAttachments;draft.__raw=$('raw').value;try{localStorage.setItem(key,JSON.stringify(draft))}catch{if(!draftStorageWarning){draftStorageWarning=true;toast('Não foi possível salvar no navegador. Mantenha esta aba aberta ou use Salvar na conta para preservar o conteúdo.')}}
 }
-try{const saved=JSON.parse(localStorage.getItem(key)||"{}");ids.forEach(function(id){if(id==="frequency")$(id).value=normalizeFrequency(saved[id]);else if(saved[id])$(id).value=saved[id]});attachmentFields.forEach(function(id){fieldAttachments[id]=Array.isArray(saved.__attachments&&saved.__attachments[id])?saved.__attachments[id].filter(function(item){return item&&typeof item.name==="string"&&/^(image|video)\//.test(item.type)&&/^https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9-]+$/.test(item.url)&&typeof item.markdown==="string"}):[]})}catch(e){}
-setupAttachments();ids.forEach(function(id){$(id).addEventListener("input",update);$(id).addEventListener("change",update)});update();
+try{const saved=JSON.parse(localStorage.getItem(key)||"{}");if(typeof saved.__raw==="string")$("raw").value=saved.__raw;ids.forEach(function(id){if(id==="frequency")$(id).value=normalizeFrequency(saved[id]);else if(saved[id])$(id).value=saved[id]});attachmentFields.forEach(function(id){fieldAttachments[id]=Array.isArray(saved.__attachments&&saved.__attachments[id])?saved.__attachments[id].filter(function(item){return item&&typeof item.name==="string"&&/^(image|video)\//.test(item.type)&&/^https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9-]+$/.test(item.url)&&typeof item.markdown==="string"}):[]})}catch(e){}
+setupAttachments();$('raw').addEventListener('input',update);ids.forEach(function(id){$(id).addEventListener("input",update);$(id).addEventListener("change",update)});update();
 
 async function refreshMemoryStatus(){try{const response=await fetch('/api/memory',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error();$('memoryStatus').textContent='Memória da sua conta: '+data.count+' solicitações. Novas issues criadas são memorizadas automaticamente.';$('clearAccountMemory').disabled=!data.count}catch(error){$('memoryStatus').textContent='Não foi possível consultar a memória da conta.'}}
+window.setupAccountMemory({onDeleted:async()=>{$('memoryUsage').textContent='';await refreshMemoryStatus()}});
 function showMemoryUsage(result){refreshMemoryStatus();const sources=Array.isArray(result.memoryUsed)?result.memoryUsed:[];$('memoryUsage').textContent=sources.length?'Contexto automático da sua conta: '+sources.map(function(item){return '#'+item.number+' · '+item.title}).join('; '):'Nenhuma memória relacionada usada nesta geração.'}
 $('clearAccountMemory').addEventListener('click',async function(){if(!confirm('Apagar a memória da sua conta? As issues, o histórico e os rascunhos serão mantidos.'))return;const button=this;button.disabled=true;try{const response=await fetch('/api/memory',{method:'DELETE'});if(!response.ok)throw new Error();$('memoryUsage').textContent='';await refreshMemoryStatus();toast('Memória da sua conta apagada.')}catch(error){$('memoryStatus').textContent='Não foi possível apagar a memória. Tente novamente.';button.disabled=false}});
 refreshMemoryStatus();
@@ -381,8 +391,8 @@ async function runDraft(followup,targetField,fieldInstruction){
     const classificationMessage=" Classificação sugerida: "+classificationName+(classificationLabel?" · label "+classificationLabel+" marcado.":githubConnected?" · não encontrei um label correspondente neste repositório.":" · conecte o repositório para marcar o label correspondente.");
     status.textContent=(questions.length?"Rascunho atualizado por "+result.model+". Responda abaixo para completar os dados pendentes.":"Rascunho sugerido por "+result.model+". Revise as informações antes de usar.")+classificationMessage;status.className="assist-status success";
     workflow.markDirty();toast(followup?"Respostas incorporadas ao rascunho.":"Rascunho gerado pela IA. Revise antes de usar.");
-  }catch(error){status.textContent=error.message;status.className="assist-status error";toast(error.message)}
-  finally{button.disabled=false;$("undoAi").disabled=!aiUndoStack.length;refreshFieldUndoButtons();document.querySelectorAll("[data-refine-field]").forEach(function(node){node.disabled=false});button.textContent="✦ Organizar com IA";const answerButton=$("aiQuestions").querySelector("button");if(answerButton)answerButton.disabled=false}
+  }catch(error){status.textContent=error.message+' Seu relato e os campos foram preservados.';status.className="assist-status error";retryAction(status,'Tentar IA novamente',()=>runDraft(followup,targetField,fieldInstruction));toast(error.message)}
+  finally{button.disabled=false;$("undoAi").disabled=!aiUndoStack.length;refreshFieldUndoButtons();document.querySelectorAll("[data-refine-field]").forEach(function(node){node.disabled=false});button.textContent="✦ Organizar com IA";const answerButton=$("aiQuestions").querySelector("button");if(answerButton)answerButton.disabled=false;window.refreshAdminQuotaAlerts?.()}
 }
 $("organize").addEventListener("click",function(){runDraft(false)});
 
@@ -511,31 +521,41 @@ function formatIssueTitle(title, classification) {
   const text = String(title || '').replace(/^(?:\s*\[(?:BUG|MELHORIA|REQUISITO)\]\s*[-–—]?\s*)+/i, '').trim();
   return (classification === 'bug' ? '[BUG] - ' : '[MELHORIA] - ') + text;
 }
-async function submitIssue(title,body,button,confirmMessage){
+async function submitIssue(title,body,button,confirmMessage,retryPayload){
+  if(issueSubmitting)return;
   title=formatIssueTitle(title,$("issueTemplate").value==="bug"?"bug":$("issueTemplate").value==="requisito"?"requisito":aiClassification||(/^\s*\[BUG\]/i.test(title)?"bug":"requisito"));
   if(attachmentUploads){toast("Aguarde o envio dos anexos.");return}
+  if(Object.values(failedAttachments).some(items=>items.length)){toast('Reenvie ou descarte os anexos pendentes antes de criar a issue.');return}
   if(!githubConnected){toast("Conecte um repositório primeiro.");return}
   const target=$("githubTarget").textContent.replace("Conectado a ","");
-  const selectedLabels=Array.from(selectedLabelNames);
-  const selectedProject=githubProjects.find(function(project){return project.id===$("projectSelect").value});
-  const selectedStatus=$("projectStatus").value?Array.from($("projectStatus").options).find(function(option){return option.value===$("projectStatus").value}):null;
+  const selectedLabels=retryPayload?retryPayload.labels:Array.from(selectedLabelNames);
+  const selectedProject=githubProjects.find(function(project){return project.id===(retryPayload?retryPayload.projectId:$("projectSelect").value)});
+  const statusValue=retryPayload?retryPayload.statusOptionId:$("projectStatus").value;
+  const selectedStatus=statusValue?Array.from($("projectStatus").options).find(function(option){return option.value===statusValue}):null;
   const selectionSummary="\n\nLabels: "+(selectedLabels.join(", ")||"nenhuma selecionada")+"\nProjeto: "+(selectedProject?selectedProject.title:"nenhum selecionado")+"\nColuna/status: "+(selectedStatus?selectedStatus.text:"não selecionado");
-  if(!await workflow.review(title,body,"Repositório: "+target+selectionSummary))return;
+  const candidate=retryPayload||{title:title,body:body,raw:$('raw').value,labels:selectedLabels,projectId:$('projectSelect').value,statusFieldId:$('projectStatus').dataset.fieldId||'',statusOptionId:$('projectStatus').value,expectedRepository:target};
+  if(pendingIssue&&!retryPayload){const {requestId,...previous}=pendingIssue;if(JSON.stringify(previous)!==JSON.stringify(candidate)){toast('Há um envio pendente. Use Verificar e recuperar envio antes de criar outra issue.');renderIssueRecovery();return}}
+  if(retryPayload&&retryPayload.expectedRepository.toLowerCase()!==target.toLowerCase()){toast('Conecte o repositório '+retryPayload.expectedRepository+' para recuperar este envio.');return}
+  issueSubmitting=true;
+  let accepted;try{accepted=await workflow.review(title,body,"Repositório: "+target+selectionSummary)}catch(error){issueSubmitting=false;toast(error.message);return}
+  if(!accepted){issueSubmitting=false;update();return}
+  const payload=retryPayload||pendingIssue||{...candidate,requestId:crypto.randomUUID()};rememberPendingIssue(payload);
   const resultBox=$("githubResult");button.disabled=true;button.dataset.label=button.textContent;button.textContent="Criando issue…";resultBox.textContent="";
   try{
-    const response=await fetch("/api/github/issues",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:title,body:body,raw:$("raw").value,labels:selectedLabels,projectId:$("projectSelect").value,statusFieldId:$("projectStatus").dataset.fieldId||"",statusOptionId:$("projectStatus").value})});
+    const response=await fetch("/api/github/issues",{method:"POST",signal:AbortSignal.timeout(60000),headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const result=await response.json();if(!response.ok)throw new Error(result.error||"Não foi possível criar a issue.");recordIssueHistory(result);refreshMemoryStatus();if(result.historyError){legacyIssueHistory.push(issueHistory[0]);$("importIssueHistory").hidden=false;$("historySyncStatus").textContent=result.historyError}else syncAccountHistory();
-    resultBox.replaceChildren();const link=document.createElement("a");link.href=result.url;link.target="_blank";link.rel="noopener noreferrer";link.className="github-result-link";link.textContent="Issue #"+result.number+" criada · abrir no GitHub";resultBox.appendChild(link);
+    rememberPendingIssue(null);resultBox.replaceChildren();const link=document.createElement("a");link.href=result.url;link.target="_blank";link.rel="noopener noreferrer";link.className="github-result-link";link.textContent="Issue #"+result.number+" criada · abrir no GitHub";resultBox.appendChild(link);
     resultBox.appendChild(document.createTextNode(" · Labels: "+(selectedLabels.length?(result.labels||[]).join(", ")||"não confirmadas":"nenhuma selecionada")));
     if(result.project)resultBox.appendChild(document.createTextNode(" · adicionada ao projeto "+result.project+(result.status?" na coluna "+result.status:"")));
     else if(selectedProject&&!result.projectError)resultBox.appendChild(document.createTextNode(" · projeto selecionado: "+selectedProject.title));
     if(selectedProject&&!selectedStatus&&!result.projectError)resultBox.appendChild(document.createTextNode(" · status não selecionado"));
+    if(result.recoveryWarning){const warning=document.createElement('div');warning.textContent=result.recoveryWarning;warning.className='github-feedback error';resultBox.append(warning)}
     if(result.memoryError){const warning=document.createElement("div");warning.textContent=result.memoryError;warning.className="github-feedback error";resultBox.appendChild(warning)}
     if(result.labelsError){const warning=document.createElement("div");warning.textContent="A issue foi criada, mas não foi possível aplicar/confirmar as labels: "+result.labelsError;warning.className="github-feedback error";resultBox.appendChild(warning)}
     if(result.projectError){const warning=document.createElement("div");warning.textContent="A issue foi criada, mas falhou a inclusão no projeto/status: "+result.projectError;warning.className="github-feedback error";resultBox.appendChild(warning)}
     resultBox.className=result.projectError||result.labelsError||result.memoryError?"github-feedback error":"github-feedback success";toast("Issue #"+result.number+" criada.");
-  }catch(error){resultBox.textContent=error.message;resultBox.className="github-feedback error"}
-  finally{button.textContent=button.dataset.label||"Criar issue";update()}
+  }catch(error){resultBox.textContent=error.message+' O conteúdo do envio foi preservado. Use Verificar e recuperar envio para continuar.';resultBox.className="github-feedback error";renderIssueRecovery()}
+  finally{issueSubmitting=false;button.textContent=button.dataset.label||"Criar issue";update();window.refreshAdminQuotaAlerts?.()}
 }
 $("createIssue").addEventListener("click",function(){
   if(!required.every(function(id){return $(id).value.trim()})){toast("Preencha os campos obrigatórios para criar uma issue completa.");return}
@@ -549,8 +569,8 @@ function markdown(){
 }
 $("clear").addEventListener("click",function(){
   if(!confirm("Apagar o relato, todos os campos e as seleções deste rascunho? A conexão com o GitHub será mantida."))return;
-  if(attachmentUploads||$("organize").disabled){toast("Aguarde a geração da IA ou o envio dos anexos antes de limpar.");return}
-  workflow.reset();attachmentFields.forEach(function(id){fieldAttachments[id]=[];renderFieldAttachments(id)});
+  if(issueSubmitting||attachmentUploads||$("organize").disabled){toast("Aguarde a geração da IA ou o envio dos anexos antes de limpar.");return}
+  workflow.reset();attachmentFields.forEach(function(id){fieldAttachments[id]=[];failedAttachments[id]=[];renderFieldAttachments(id)});
   ids.forEach(function(id){$(id).value=id==="frequency"?"GERAL":""});$("raw").value="";
   $("date").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
   selectedLabelNames.clear();aiUndoStack.length=0;touched.clear();generatedByAi.clear();lastQuestions=[];aiClassification="";aiAppliedLabel="";
@@ -564,7 +584,7 @@ $("clear").addEventListener("click",function(){
   update();localStorage.removeItem(key);toast("Rascunho apagado.");
 });
 const workflow=window.setupIssueWorkflow({
-  uploading:function(){return attachmentUploads>0||$("organize").disabled},
+  uploading:function(){return issueSubmitting||attachmentUploads>0||Object.values(failedAttachments).some(items=>items.length)||$("organize").disabled},
   capture:function(){const snapshot={};ids.forEach(function(id){snapshot[id]=$(id).value});return {...snapshot,raw:$('raw').value,classificationPreference:$('issueTemplate').value,aiClassification:aiClassification,attachments:fieldAttachments,labels:Array.from(selectedLabelNames),repository:$('githubTarget').textContent.replace('Conectado a ',''),projectId:$('projectSelect').value,statusOptionId:$('projectStatus').value}},
   restore:async function(snapshot){
     if(githubConnected)await loadGithubOptions();
