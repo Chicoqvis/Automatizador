@@ -1,3 +1,4 @@
+import { dailyAiQuotaError } from './ai-quota.mjs';
 const MAX_BODY_BYTES = 30_000;
 
 function unauthorized() {
@@ -53,6 +54,8 @@ export default {
       if (!response) throw new Error("Workers AI não retornou conteúdo JSON.");
       return Response.json({ response, model }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
+      const quota = dailyAiQuotaError(error);
+      if (quota) return Response.json({ error: quota.message, code: quota.code, resetAt: quota.resetAt, retryAfter: quota.retryAfter }, { status: 429, headers: { 'Cache-Control': 'no-store' } });
       return Response.json({ error: error.message || "Falha na geração do Workers AI." }, { status: 502, headers: { "Cache-Control": "no-store" } });
     }
   }

@@ -7,6 +7,18 @@ import worker from '../cloudflare-app-worker.mjs';
 import { validateSavedDraft, rankSimilarIssues, findSimilarIssues, fieldRefinementInstruction } from '../issue-workflow.mjs';
 import { formatDraftTopics } from '../draft-prompt.mjs';
 import { memoryContent,selectAccountMemory } from '../account-memory.mjs';
+import { dailyAiQuotaError } from '../ai-quota.mjs';
+
+test('cota diária calcula a próxima meia-noite UTC sem confundir indisponibilidade',()=>{
+  const now=Date.parse('2026-10-10T22:30:00Z');
+  const error=dailyAiQuotaError(new Error('3036: You have used up your daily free allocation of 10,000 neurons.'),now);
+  assert.equal(error.status,429);assert.equal(error.retryAfter,5400);
+  assert.equal(error.resetAt,Date.parse('2026-10-11T00:00:00Z'));
+  assert.match(error.message,/1 h e 30 min/);assert.match(error.message,/21h/);
+  assert.match(dailyAiQuotaError({code:3036},Date.parse('2026-10-10T23:59:40Z')).message,/1 min/);
+  assert.equal(dailyAiQuotaError(new Error('3040: Capacity temporarily exceeded')),null);
+  assert.equal(dailyAiQuotaError(new Error('429: Too many requests')),null);
+});
 
 test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns',()=>{
   assert.equal(formatDraftTopics('Regras a validar: - Disponibilizar impressão. - Permitir seleção. O objetivo é facilitar o fluxo.'),'Regras a validar:\n• Disponibilizar impressão.\n• Permitir seleção.\n\nO objetivo é facilitar o fluxo.');
@@ -56,7 +68,12 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   assert(modelInput.messages[0].content.includes('MEMORIA_PRIVADA_alice'));assert(!modelInput.messages[0].content.includes('MEMORIA_PRIVADA_bob'));assert(!modelInput.messages[0].content.includes('REFERENCIA_INJETADA'));
   assert.equal((await request('/api/memory','DELETE')).status,200);
   assert.equal((await request('/api/memory')).data.count,0);assert.equal((await request('/api/memory','GET',undefined,'bob')).data.count,1);
-  const cleared=await request('/api/draft','POST',{raw:'Filtro marcação agendamento'});assert.equal(cleared.data.memoryUsed.length,0);assert(!modelInput.messages[0].content.includes('MEMORIA_PRIVADA_bob'));db.close();
+  const cleared=await request('/api/draft','POST',{raw:'Filtro marcação agendamento'});assert.equal(cleared.data.memoryUsed.length,0);assert(!modelInput.messages[0].content.includes('MEMORIA_PRIVADA_bob'));
+  env.AI.run=async()=>{throw new Error('3036: You have used up your daily free allocation of 10,000 neurons.')};
+  const limited=await request('/api/draft','POST',{raw:'Filtro marcação agendamento',field:'description'});
+  assert.equal(limited.status,429);assert.equal(limited.data.code,'AI_DAILY_QUOTA_EXCEEDED');assert(limited.data.retryAfter>0);assert.match(limited.data.error,/Seu texto foi preservado/);
+  env.AI.run=async()=>{throw new Error('3040: Capacity temporarily exceeded')};
+  const unavailable=await request('/api/draft','POST',{raw:'Filtro marcação agendamento'});assert.equal(unavailable.status,502);assert.equal(unavailable.data.code,undefined);db.close();
 });
 
 test('memória usa conteúdos relacionados e respeita o repositório',()=>{

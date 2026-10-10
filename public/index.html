@@ -381,7 +381,7 @@ async function runDraft(followup,targetField,fieldInstruction){
     const classificationMessage=" Classificação sugerida: "+classificationName+(classificationLabel?" · label "+classificationLabel+" marcado.":githubConnected?" · não encontrei um label correspondente neste repositório.":" · conecte o repositório para marcar o label correspondente.");
     status.textContent=(questions.length?"Rascunho atualizado por "+result.model+". Responda abaixo para completar os dados pendentes.":"Rascunho sugerido por "+result.model+". Revise as informações antes de usar.")+classificationMessage;status.className="assist-status success";
     workflow.markDirty();toast(followup?"Respostas incorporadas ao rascunho.":"Rascunho gerado pela IA. Revise antes de usar.");
-  }catch(error){status.textContent=error.message;status.className="assist-status error";toast("Não foi possível gerar o rascunho.")}
+  }catch(error){status.textContent=error.message;status.className="assist-status error";toast(error.message)}
   finally{button.disabled=false;$("undoAi").disabled=!aiUndoStack.length;refreshFieldUndoButtons();document.querySelectorAll("[data-refine-field]").forEach(function(node){node.disabled=false});button.textContent="✦ Organizar com IA";const answerButton=$("aiQuestions").querySelector("button");if(answerButton)answerButton.disabled=false}
 }
 $("organize").addEventListener("click",function(){runDraft(false)});

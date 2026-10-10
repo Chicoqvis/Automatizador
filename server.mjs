@@ -2,6 +2,7 @@ import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } 
 import { validateSavedDraft, findSimilarIssues, workflowError, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
+import { dailyAiQuotaError } from './ai-quota.mjs';
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -171,6 +172,11 @@ async function generate(body,userId) {
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    if (cloudflare) {
+      let failure; try { failure = JSON.parse(detail); } catch {}
+      if (failure?.code === 'AI_DAILY_QUOTA_EXCEEDED') throw Object.assign(new Error(failure.error), { status: 429 });
+      const quota = dailyAiQuotaError(detail); if (quota) throw quota;
+    }
     throw Object.assign(new Error("Falha ao gerar rascunho em " + (cloudflare ? "Cloudflare Workers AI" : "Ollama") + " (HTTP " + response.status + "). " + detail.slice(0, 300)), { status: 502 });
   }
   const result = await response.json();

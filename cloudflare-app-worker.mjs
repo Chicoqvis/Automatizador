@@ -1,3 +1,4 @@
+import { dailyAiQuotaError } from "./ai-quota.mjs";
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
@@ -286,7 +287,7 @@ async function generateDraft(env, body, userId) {
   const model = env.CLOUDFLARE_AI_MODEL || MODEL_DEFAULT;
   let result;
   try { result = await env.AI.run(model, { messages, temperature: 0, max_tokens: 2600, response_format: { type: "json_schema", json_schema: SCHEMA } }); }
-  catch (error) { throw fail(error.message || "Falha ao gerar o rascunho no Workers AI.", 502); }
+  catch (error) { throw dailyAiQuotaError(error) || fail(error.message || "Falha ao gerar o rascunho no Workers AI.", 502); }
   let draft = result?.response ?? result?.output_text;
   if (typeof draft === "string") {
     try { draft = JSON.parse(draft); }
@@ -499,6 +500,6 @@ function constantTimeTextEqual(left, right) {
 export default {
   async fetch(request, env) {
     try { return await route(request, env); }
-    catch (error) { return json({ error: error.message || "Erro interno do servidor." }, error.status || 500); }
+    catch (error) { return json({ error: error.message || "Erro interno do servidor.", ...(error.code === 'AI_DAILY_QUOTA_EXCEEDED' ? { code: error.code, resetAt: error.resetAt, retryAfter: error.retryAfter } : {}) }, error.status || 500); }
   }
 };
