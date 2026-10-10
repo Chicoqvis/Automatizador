@@ -15,3 +15,8 @@ impacts: “Fluxos citados:\n- Nova Marcação — tela inicial e pesquisa de ma
 today: “O relato não detalha como as equipes identificam atualmente o Tipo de Paciente.\n\nHipótese a confirmar: a localização pode depender dos filtros já disponíveis e da consulta à classificação dos registros. Confirmar esse procedimento antes de documentá-lo como fluxo atual.”
 nonimplementation: “Possíveis impactos a validar:\n- A pesquisa pode continuar menos direcionada para as rotinas que dependem do Tipo de Paciente.\n- As equipes podem precisar de consultas adicionais para localizar as marcações desejadas.\n- A organização das confirmações, cancelamentos e remarcações pode continuar exigindo maior esforço.\n- O benefício de padronizar essa consulta entre todas as unidades deixaria de ser obtido.”
 Antes de retornar, confira que a descrição contém uma proposta com comportamentos e verificações concretas, e que cada campo tem uma função distinta. Retorne somente JSON válido conforme o schema.`;
+
+export function formatIssueTitle(title, classification) {
+  const text = String(title || '').replace(/^(?:\s*\[(?:BUG|MELHORIA|REQUISITO)\]\s*[-–—]?\s*)+/i, '').trim();
+  return (classification === 'bug' ? '[BUG] - ' : '[MELHORIA] - ') + text;
+}

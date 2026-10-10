@@ -105,7 +105,7 @@ const ids=["title","requester","date","units","frequency","problem","description
 const required=ids.filter(function(x){return x!=="otherMotivation"});
 const generated=["title","requester","units","frequency","problem","description","impacts","today","nonimplementation","motivation","otherMotivation","urgency"];
 const names={title:"Título",requester:"Solicitante",date:"Data",units:"Unidades impactadas",frequency:"Geral ou pontual",problem:"Problema",description:"Descrição",impacts:"Outros módulos/relatórios",today:"Processo atual",nonimplementation:"Impacto da não implementação",motivation:"Motivação",urgency:"Urgência"};
-const $=function(id){return document.getElementById(id)}, userStorageSuffix=encodeURIComponent($("authUserLabel").textContent), key="clareia.issueDraft.v1."+userStorageSuffix, narrativesKey="clareia.savedNarratives.v1."+userStorageSuffix, issueHistoryKey="automacao.issueHistory.v1."+userStorageSuffix, githubRepoKey="automacao.githubRepository.v1."+userStorageSuffix, rememberGithubRepoKey="automacao.rememberGithubRepository.v1."+userStorageSuffix;let githubConnected=false,githubLabels=[],githubProjects=[],aiClassification="",aiAppliedLabel="",savedNarratives=[],issueHistory=[];
+const $=function(id){return document.getElementById(id)}, userStorageSuffix=encodeURIComponent($("authUserLabel").textContent), key="clareia.issueDraft.v1."+userStorageSuffix, narrativesKey="clareia.savedNarratives.v1."+userStorageSuffix, issueHistoryKey="automacao.issueHistory.v1."+userStorageSuffix, githubRepoKey="automacao.githubRepository.v1."+userStorageSuffix, rememberGithubRepoKey="automacao.rememberGithubRepository.v1."+userStorageSuffix;const selectedLabelNames=new Set();let githubConnected=false,githubLabels=[],githubProjects=[],aiClassification="",aiAppliedLabel="",savedNarratives=[],issueHistory=[];
 const now=new Date();$("date").value=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
 try{$("rememberGithubRepo").checked=localStorage.getItem(rememberGithubRepoKey)==="true";if($("rememberGithubRepo").checked){$("githubRepo").value=localStorage.getItem(githubRepoKey)||""}}catch(e){}
 $("rememberGithubRepo").addEventListener("change",function(){try{localStorage.setItem(rememberGithubRepoKey,this.checked?"true":"false");if(!this.checked)localStorage.removeItem(githubRepoKey);else if($("githubRepo").value.trim())localStorage.setItem(githubRepoKey,$("githubRepo").value.trim())}catch(e){}});
@@ -262,7 +262,7 @@ async function syncGithub(){
     update();
     if(githubConnected)loadGithubOptions();
   }catch(e){
-    githubConnected=false;
+    githubConnected=false;selectedLabelNames.clear();aiAppliedLabel="";
     $("githubFeedback").textContent="Não foi possível consultar a conexão com GitHub.";
     $("githubFeedback").className="github-feedback error";
   }
@@ -298,12 +298,12 @@ $("connectGithub").addEventListener("click",async function(){
 });
 
 function renderLabels(){
-  const query=$("labelSearch").value.trim().toLowerCase(),list=$("labelList"),selected=new Set(Array.from(list.querySelectorAll("input[type=checkbox]:checked")).map(function(input){return input.value}));list.replaceChildren();
+  const query=$("labelSearch").value.trim().toLowerCase(),list=$("labelList"),selected=selectedLabelNames;list.replaceChildren();
   const labels=githubLabels.filter(function(label){return label.name.toLowerCase().includes(query)||(label.description||"").toLowerCase().includes(query)});
   if(!labels.length){list.textContent="Nenhuma label encontrada.";return}
   labels.forEach(function(label){
     const row=document.createElement("label");row.className="gh-label";
-    const box=document.createElement("input");box.type="checkbox";box.value=label.name;box.checked=selected.has(label.name);box.setAttribute("aria-label",label.name);
+    const box=document.createElement("input");box.type="checkbox";box.value=label.name;box.checked=selected.has(label.name);box.setAttribute("aria-label",label.name);box.addEventListener("change",function(){if(box.checked)selectedLabelNames.add(box.value);else selectedLabelNames.delete(box.value)});
     const swatch=document.createElement("span");swatch.style.cssText="width:9px;height:9px;border-radius:50%;background:#"+(label.color||"8792a2");swatch.setAttribute("aria-hidden","true");
     const name=document.createElement("span");name.textContent=label.name+(label.description?" · "+label.description:"");
     row.append(box,swatch,name);list.appendChild(row);
@@ -319,11 +319,8 @@ function applyClassificationLabel(){
     target=githubLabels.find(function(label){return pattern.test(normalize(label.name))});
   }
   if(!target)return "";
-  const list=$("labelList");
-  if(aiAppliedLabel&&aiAppliedLabel!==target.name){const oldBox=Array.from(list.querySelectorAll("input[type=checkbox]")).find(function(input){return input.value===aiAppliedLabel});if(oldBox)oldBox.checked=false}
-  const selected=new Set(Array.from(list.querySelectorAll("input[type=checkbox]:checked")).map(function(input){return input.value}));selected.add(target.name);
-  if($("labelSearch").value){$("labelSearch").value="";renderLabels()}
-  list.querySelectorAll("input[type=checkbox]").forEach(function(input){input.checked=selected.has(input.value)});
+  if(aiAppliedLabel&&aiAppliedLabel!==target.name)selectedLabelNames.delete(aiAppliedLabel);
+  selectedLabelNames.add(target.name);renderLabels();
   aiAppliedLabel=target.name;
   return target.name;
 }
@@ -333,6 +330,7 @@ async function loadGithubOptions(){
     const response=await fetch("/api/github/options",{cache:"no-store"}),data=await response.json();
     if(!response.ok)throw new Error(data.error||"Não foi possível carregar labels e projetos.");
     githubLabels=Array.isArray(data.labels)?data.labels:[];githubProjects=Array.isArray(data.projects)?data.projects:[];
+    const availableLabelNames=new Set(githubLabels.map(function(label){return label.name}));selectedLabelNames.forEach(function(name){if(!availableLabelNames.has(name))selectedLabelNames.delete(name)});
     renderLabels();applyClassificationLabel();const select=$("projectSelect");select.replaceChildren(new Option("Não adicionar a um projeto",""));
     githubProjects.forEach(function(project){select.add(new Option(project.title+" · #"+project.number,project.id))});
     feedback.textContent=githubLabels.length+" labels e "+githubProjects.length+" projetos carregados.";
@@ -356,7 +354,7 @@ $("projectSelect").addEventListener("change",function(){
 });
 $("disconnectGithub").addEventListener("click",async function(){
   try{await fetch("/api/github/disconnect",{method:"POST"})}catch(e){}
-  githubConnected=false;
+  githubConnected=false;selectedLabelNames.clear();aiAppliedLabel="";
   $("githubSetup").hidden=false;
   $("githubConnected").hidden=true;
   $("githubToken").value="";
@@ -368,10 +366,16 @@ $("disconnectGithub").addEventListener("click",async function(){
   update();
 });
 
+
+function formatIssueTitle(title, classification) {
+  const text = String(title || '').replace(/^(?:\s*\[(?:BUG|MELHORIA|REQUISITO)\]\s*[-–—]?\s*)+/i, '').trim();
+  return (classification === 'bug' ? '[BUG] - ' : '[MELHORIA] - ') + text;
+}
 async function submitIssue(title,body,button,confirmMessage){
+  title=formatIssueTitle(title,$("issueTemplate").value==="bug"?"bug":$("issueTemplate").value==="requisito"?"requisito":aiClassification||(/^\s*\[BUG\]/i.test(title)?"bug":"requisito"));
   if(!githubConnected){toast("Conecte um repositório primeiro.");return}
   const target=$("githubTarget").textContent.replace("Conectado a ","");
-  const selectedLabels=Array.from(document.querySelectorAll("#labelList input:checked")).map(function(input){return input.value});
+  const selectedLabels=Array.from(selectedLabelNames);
   const selectedProject=githubProjects.find(function(project){return project.id===$("projectSelect").value});
   const selectedStatus=$("projectStatus").value?Array.from($("projectStatus").options).find(function(option){return option.value===$("projectStatus").value}):null;
   const selectionSummary="\n\nLabels: "+(selectedLabels.join(", ")||"nenhuma selecionada")+"\nProjeto: "+(selectedProject?selectedProject.title:"nenhum selecionado")+"\nColuna/status: "+(selectedStatus?selectedStatus.text:"não selecionado");
@@ -410,7 +414,7 @@ $("clear").addEventListener("click",function(){
   if(!confirm("Apagar o relato, todos os campos e as seleções deste rascunho? A conexão com o GitHub será mantida."))return;
   ids.forEach(function(id){$(id).value=""});$("raw").value="";
   $("date").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
-  touched.clear();generatedByAi.clear();lastQuestions=[];aiClassification="";aiAppliedLabel="";
+  selectedLabelNames.clear();touched.clear();generatedByAi.clear();lastQuestions=[];aiClassification="";aiAppliedLabel="";
   $("aiQuestions").replaceChildren();
   $("aiStatus").textContent="";$("aiStatus").className="assist-status";
   $("githubResult").replaceChildren();$("githubResult").className="github-feedback";
