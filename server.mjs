@@ -1,3 +1,4 @@
+import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle } from "./draft-prompt.mjs";
 import http from "node:http";
 import fs from "node:fs";
@@ -580,6 +581,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname.startsWith("/api/") && !session) return send(res, 401, { error: "Faça login para continuar." });
     const userId = session && session.user.id;
+    if(pathname === "/api/github/attachments" && method === "POST") {
+      if(!githubConnections.has(userId))return send(res,409,{error:"Conecte um repositório GitHub primeiro."});
+      if(githubConnections.get(userId).githubUser)await ensureGithubOAuthIdentity(userId);
+      return send(res,201,await uploadGithubAttachment(githubConnections.get(userId),url.searchParams.get("name"),await readAttachment(req)));
+    }
 
     if (pathname === "/api/github/oauth/status" && method === "GET") {
       const identity = githubOAuthIdentities.get(userId);

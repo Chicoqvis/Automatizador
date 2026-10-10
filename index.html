@@ -31,7 +31,7 @@ input:focus,textarea:focus{border-color:#31aeb4;box-shadow:0 0 0 3px #31aeb422}
 .top{display:flex;justify-content:space-between;align-items:center}.top-actions{display:flex;align-items:center;gap:10px}.top-actions button{border:0;border-radius:7px;padding:8px 11px;background:#e8f2f3;color:#31575b;font-weight:700;cursor:pointer}.auth-screen{max-width:440px;margin:9vh auto 40px;padding:0 16px}.auth-card,.admin-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px;box-shadow:0 12px 34px #19363a0c}.auth-card h1{font-size:23px;margin:0 0 8px}.auth-card p{color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 18px}.auth-card label,.admin-card label{display:block;font-size:12px;font-weight:700;margin:12px 0 5px}.auth-card input,.admin-card input,.admin-card select{width:100%;height:40px;border:1px solid var(--line);border-radius:7px;padding:0 10px}.auth-card button,.admin-card button{margin-top:14px;width:100%}.auth-message{min-height:18px;margin-top:10px;color:#b34551;font-size:12px}.admin-overlay{position:fixed;inset:0;background:#10282bd1;z-index:10;display:grid;place-items:center;padding:20px}.admin-overlay[hidden],.auth-screen[hidden],#appMain[hidden]{display:none}.admin-card{max-width:650px;width:100%;max-height:90vh;overflow:auto}.admin-head,.admin-user{display:flex;justify-content:space-between;align-items:center;gap:12px}.admin-head h2{margin:0;font-size:18px}.admin-head button,.admin-user button{width:auto;margin:0}.admin-form{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin:16px 0}.admin-form .wide{grid-column:1/-1}.admin-users{display:grid;gap:9px}.admin-user{border-top:1px solid var(--line);padding-top:10px}.admin-user strong{font-size:13px}.admin-user small{display:block;color:var(--muted);font-size:11px;margin-top:3px}.admin-user-actions{display:flex;gap:6px}.admin-user-actions button{font-size:11px;padding:7px 9px}.admin-error{color:#b34551;font-size:12px;margin-top:8px;min-height:16px}@media(max-width:560px){.top-actions{gap:5px}.top-actions button{padding:7px;font-size:10px}.admin-form{grid-template-columns:1fr}.admin-form .wide{grid-column:auto}.admin-user{align-items:flex-start;flex-direction:column}}
 </style><style>
 .github-remember{display:flex!important;align-items:center;gap:8px;margin:10px 0 3px!important;font-weight:600!important}.github-remember input{width:15px!important;height:15px!important;flex:0 0 15px;margin:0}.github-manual-button{margin-top:8px}.github-token-manual{width:min(650px,calc(100vw - 28px));max-height:85vh;border:1px solid var(--line);border-radius:14px;padding:20px;color:var(--ink);box-shadow:0 20px 70px #15273b33}.github-token-manual::backdrop{background:#10203388}.github-token-manual-head{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding-bottom:12px}.github-token-manual-head h2{font:700 17px Manrope,sans-serif;margin:0}.github-token-manual-head button{width:auto!important}.github-token-manual-content{overflow:auto;max-height:calc(85vh - 85px);font-size:13px;line-height:1.6}.github-token-manual-content h3{font:700 14px Manrope,sans-serif;margin:18px 0 7px}.github-token-manual-content p{color:var(--ink);margin:9px 0}.github-token-manual-content ol{padding-left:22px}.github-token-manual-content li{margin:7px 0}.github-token-manual-content code{overflow-wrap:anywhere;background:#f0f4f6;padding:2px 4px;border-radius:4px}.github-token-warning{background:#fff8e9;border:1px solid #f1e4c2;border-radius:8px;padding:10px}.github-token-manual-content a{color:var(--blue)}@media(max-width:800px){.github{display:block}}
-</style></head><body>
+.attachment-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:7px}.attachment-tools span,.attachment-status{font-size:11px;color:#748197}.attachment-status{margin-top:5px;overflow-wrap:anywhere}.attachment-previews{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:8px}.attachment-card{border:1px solid #e6eaf0;border-radius:9px;padding:9px;display:flex;flex-direction:column;gap:7px;min-width:0}.attachment-card img,.attachment-card video{max-width:100%;max-height:220px;object-fit:contain;border-radius:5px}.attachment-card span{font-size:11px;overflow-wrap:anywhere}</style></head><body>
 <header class="top"><div class="brand"><div class="logo">✳</div>Automação de issues</div><div class="top-actions"><div class="topnote" id="ollamaStatus">Verificando IA…</div><span id="authUserLabel" hidden></span><button id="adminButton" type="button" hidden>Gerenciar acessos</button><button id="logoutButton" type="button" hidden>Sair</button></div></header>
 <section class="auth-screen" id="authScreen" hidden><div class="auth-card"><h1 id="authTitle">Entrar</h1><p id="authDescription">Entre com seu usuário e senha para acessar a automação.</p><form id="authForm"><div id="setupKeyWrap" hidden><label for="setupKey">Chave de configuração inicial</label><input id="setupKey" type="password" autocomplete="off"></div><label for="authUsername">Usuário</label><input id="authUsername" required autocomplete="username"><label for="authPassword">Senha</label><input id="authPassword" type="password" required autocomplete="current-password"><button class="btn primary" id="authSubmit" type="submit">Entrar</button><div class="auth-message" id="authMessage" aria-live="polite"></div></form></div></section>
 <main id="appMain" hidden><div class="crumb">Solicitações <span>/</span> Nova solicitação</div><div class="hero"><div class="eyebrow">Assistente de requisitos</div><h1>Vamos organizar sua solicitação.</h1><p>Conte o que aconteceu e prepare um rascunho claro para sua issue no GitHub.</p></div>
@@ -167,18 +167,62 @@ $("deleteSavedNarrative").addEventListener("click",function(){
   savedNarratives=savedNarratives.filter(function(saved){return saved.id!==id});localStorage.setItem(narrativesKey,JSON.stringify(savedNarratives));renderSavedNarratives();$("savedNarrativeStatus").textContent="Relato salvo excluído.";
 });
 $("savedNarrativeSelect").addEventListener("change",function(){const selected=!!this.value;$("useSavedNarrative").disabled=!selected;$("deleteSavedNarrative").disabled=!selected});
+const fieldAttachments={};let attachmentUploads=0;
+const attachmentFields=['problem','description','impacts','today','nonimplementation','otherMotivation'];
+const attachmentViews={};
+function renderFieldAttachments(id){
+  const view=attachmentViews[id];if(!view)return;view.replaceChildren();
+  (fieldAttachments[id]||[]).forEach(function(item,index){
+    const card=document.createElement('div');card.className='attachment-card';
+    const media=document.createElement(item.type.startsWith('image/')?'img':'video');media.src=item.url;
+    if(media.tagName==='VIDEO'){media.controls=true;media.preload='metadata'}else{media.alt=item.name;media.loading='lazy'}
+    const caption=document.createElement('span');caption.textContent=item.name;
+    const remove=document.createElement('button');remove.type='button';remove.className='btn soft';remove.textContent='Remover do campo';
+    remove.addEventListener('click',function(){fieldAttachments[id].splice(index,1);renderFieldAttachments(id);update()});
+    card.append(media,caption,remove);view.appendChild(card);
+  });
+}
+async function attachFiles(id,files,status){
+  if(!githubConnected){status.textContent='Conecte um repositório GitHub antes de anexar.';return}
+  for(const file of files){
+    if(!/\.(png|jpe?g|gif|webp|mp4|webm|mov)$/i.test(file.name)){status.textContent='Formato não suportado: '+file.name;continue}
+    if(!file.size||file.size>10*1024*1024){status.textContent='Use arquivos de até 10 MB: '+file.name;continue}
+    attachmentUploads++;update();status.textContent='Enviando '+file.name+'…';
+    try{
+      const response=await fetch('/api/github/attachments?name='+encodeURIComponent(file.name),{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
+      const item=await response.json();if(!response.ok)throw new Error(item.error||'Falha ao enviar o arquivo.');
+      (fieldAttachments[id]||(fieldAttachments[id]=[])).push(item);renderFieldAttachments(id);status.textContent='Anexo adicionado.';
+    }catch(error){status.textContent=error.message}
+    finally{attachmentUploads--;update()}
+  }
+}
+function setupAttachments(){
+  attachmentFields.forEach(function(id){
+    const field=$(id),tools=document.createElement('div');tools.className='attachment-tools';
+    const button=document.createElement('button');button.type='button';button.className='btn soft';button.textContent='Anexar imagem ou vídeo';
+    const picker=document.createElement('input');picker.type='file';picker.multiple=true;picker.hidden=true;picker.accept='.png,.jpg,.jpeg,.gif,.webp,.mp4,.webm,.mov';
+    const hint=document.createElement('span');hint.textContent='Até 10 MB por arquivo. Cole prints ou arraste arquivos para este campo.';
+    const status=document.createElement('div');status.className='attachment-status';status.setAttribute('aria-live','polite');
+    const previews=document.createElement('div');previews.className='attachment-previews';attachmentViews[id]=previews;
+    button.addEventListener('click',function(){picker.click()});picker.addEventListener('change',function(){attachFiles(id,Array.from(picker.files),status);picker.value=''});
+    field.addEventListener('paste',function(event){const files=Array.from(event.clipboardData.files);if(files.length){event.preventDefault();attachFiles(id,files,status)}});
+    field.addEventListener('dragover',function(event){if(Array.from(event.dataTransfer.types).includes('Files'))event.preventDefault()});
+    field.addEventListener('drop',function(event){if(event.dataTransfer.files.length){event.preventDefault();attachFiles(id,Array.from(event.dataTransfer.files),status)}});
+    tools.append(button,picker,hint);field.after(tools,status,previews);renderFieldAttachments(id);
+  });
+}
 function update(){
   const isOther=$("motivation").value.indexOf("Outras")===0;
   $("otherMotivationField").hidden=!isOther;
   if(!isOther)$("otherMotivation").value="";
-  const count=required.filter(function(id){return $(id).value.trim()}).length;$("createIssue").disabled=!githubConnected||count<required.length;
+  const count=required.filter(function(id){return $(id).value.trim()}).length;$("createIssue").disabled=!githubConnected||attachmentUploads>0||count<required.length;
   $("progressBar").style.width=Math.round(count/required.length*100)+"%";
   $("progressText").textContent=count===required.length?"Todos os campos obrigatórios preenchidos":count+" de "+required.length+" campos obrigatórios preenchidos";
   $("checklist").innerHTML=required.map(function(id){const done=!!$(id).value.trim();return '<div class="item '+(done?"done":"")+'"><span class="mark">'+(done?"✓":"")+'</span><span>'+names[id]+'</span></div>'}).join("");
-  const draft={};ids.forEach(function(id){draft[id]=$(id).value});localStorage.setItem(key,JSON.stringify(draft));
+  const draft={};ids.forEach(function(id){draft[id]=$(id).value});draft.__attachments=fieldAttachments;localStorage.setItem(key,JSON.stringify(draft));
 }
-try{const saved=JSON.parse(localStorage.getItem(key)||"{}");ids.forEach(function(id){if(saved[id])$(id).value=saved[id]})}catch(e){}
-ids.forEach(function(id){$(id).addEventListener("input",update);$(id).addEventListener("change",update)});update();
+try{const saved=JSON.parse(localStorage.getItem(key)||"{}");ids.forEach(function(id){if(saved[id])$(id).value=saved[id]});attachmentFields.forEach(function(id){fieldAttachments[id]=Array.isArray(saved.__attachments&&saved.__attachments[id])?saved.__attachments[id].filter(function(item){return item&&typeof item.name==="string"&&/^(image|video)\//.test(item.type)&&/^https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9-]+$/.test(item.url)&&typeof item.markdown==="string"}):[]})}catch(e){}
+setupAttachments();ids.forEach(function(id){$(id).addEventListener("input",update);$(id).addEventListener("change",update)});update();
 
 async function updateAIStatus(){
   const badge=$("ollamaStatus");
@@ -373,6 +417,7 @@ function formatIssueTitle(title, classification) {
 }
 async function submitIssue(title,body,button,confirmMessage){
   title=formatIssueTitle(title,$("issueTemplate").value==="bug"?"bug":$("issueTemplate").value==="requisito"?"requisito":aiClassification||(/^\s*\[BUG\]/i.test(title)?"bug":"requisito"));
+  if(attachmentUploads){toast("Aguarde o envio dos anexos.");return}
   if(!githubConnected){toast("Conecte um repositório primeiro.");return}
   const target=$("githubTarget").textContent.replace("Conectado a ","");
   const selectedLabels=Array.from(selectedLabelNames);
@@ -402,7 +447,7 @@ $("createIssue").addEventListener("click",function(){
   submitIssue($("title").value.trim(),markdown(),$("createIssue"),"Criar a issue completa?");
 });
 function markdown(){
-  function value(id){return $(id).value.trim()||"—"}
+  function value(id){return ($(id).value.trim()||"—")+(fieldAttachments[id]&&fieldAttachments[id].length?"\n\n"+fieldAttachments[id].map(function(item){return item.markdown}).join("\n\n"):"")}
   return ["## Solicitante\n"+value("requester"),"## Data\n"+value("date"),"## Unidades impactadas\n"+value("units"),"## É geral, ou pontual\n"+value("frequency"),"## Qual problema essa solicitação resolve?\n"+value("problem"),"## Descrição da Solicitação\n"+value("description"),"## Outros módulos/relatórios afetados\n"+value("impacts"),"## Como está sendo feito hoje\n"+value("today"),"## Impacto da Não Implementação\n"+value("nonimplementation"),"## Motivação da Solicitação\n"+value("motivation"),"## Outra Motivação\n"+value("otherMotivation"),"## Urgência\n"+value("urgency")].join("\n\n")
 }
 $("copy").addEventListener("click",async function(){
@@ -412,6 +457,8 @@ $("copy").addEventListener("click",async function(){
 });
 $("clear").addEventListener("click",function(){
   if(!confirm("Apagar o relato, todos os campos e as seleções deste rascunho? A conexão com o GitHub será mantida."))return;
+  if(attachmentUploads){toast("Aguarde o envio dos anexos antes de limpar.");return}
+  attachmentFields.forEach(function(id){fieldAttachments[id]=[];renderFieldAttachments(id)});
   ids.forEach(function(id){$(id).value=""});$("raw").value="";
   $("date").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
   selectedLabelNames.clear();touched.clear();generatedByAi.clear();lastQuestions=[];aiClassification="";aiAppliedLabel="";

@@ -1,3 +1,4 @@
+import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle } from "./draft-prompt.mjs";
 const MODEL_DEFAULT = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const SESSION_TTL = 12 * 60 * 60;
@@ -368,6 +369,10 @@ async function route(request, env) {
   }
   if (path.startsWith("/api/") && !session) throw fail("Faça login para continuar.", 401);
   const userId = session?.user.id;
+  if(path === "/api/github/attachments" && method === "POST") {
+    const connection=await githubConnection(env,userId);if(!connection)throw fail("Conecte um repositório GitHub primeiro.",409);
+    return json(await uploadGithubAttachment(connection,url.searchParams.get("name"),await readAttachment(request.body)),201);
+  }
   if (path === "/api/github/oauth/status" && method === "GET") {
     const identity = await env.DB.prepare("SELECT login FROM github_identities WHERE user_id=?").bind(userId).first();
     return json({ available: githubOAuthConfigured(env), connected: !!identity, githubUser: identity?.login || "" });
