@@ -95,3 +95,9 @@ A implementação utiliza o mesmo endpoint de anexos empregado pelo [GitHub CLI]
 No Cloudflare, aplique `npx.cmd wrangler d1 migrations apply automatizador-db --remote` antes de publicar a versão com a tabela de rascunhos. Os registros são isolados por usuário e protegidos contra sobrescrita por versões antigas. No servidor local, os rascunhos ficam em `data/drafts.json` (ignorado pelo Git).
 
 Validação da persistência e busca: `node --test tests/workflow.test.mjs` (Node.js 24).
+
+## Desfazer IA e pesquisar o histórico
+
+O botão **Desfazer IA** recupera a alteração anterior aplicada pela IA, incluindo gerações completas e de um único campo. Mantém até 20 alterações na sessão atual. Se o usuário editou depois um campo que será restaurado, pede confirmação. Os anexos não são alterados. Abrir outro rascunho, apagar o formulário ou recarregar encerra essa sequência de desfazer.
+
+O **Histórico de issues** permite combinar pesquisa de título ou número, repositório e intervalo de datas. Os filtros consideram a data de criação registrada no navegador. **Limpar filtros** exibe novamente os registros; **Limpar** apaga somente o histórico local, sem excluir issues do GitHub. São mantidos até 200 registros por conta neste navegador; registros antigos já descartados pelo limite anterior não são recuperados.
