@@ -42,7 +42,7 @@ input:focus,textarea:focus{border-color:#31aeb4;box-shadow:0 0 0 3px #31aeb422}
 <div class="field"><label for="requester">Solicitante <b class="star">*</b></label><input id="requester" required placeholder="Nome / setor de origem"></div>
 <div class="field"><label for="date">Data <b class="star">*</b></label><input id="date" type="date" required></div>
 <div class="field full"><label for="units">Unidades impactadas <b class="star">*</b></label><input id="units" required placeholder="TODAS ou liste as unidades"></div>
-<div class="field full"><label for="frequency">É geral, ou pontual? <b class="star">*</b></label><input id="frequency" required placeholder="Acontece sempre ou em uma situação específica?"></div>
+<div class="field full"><label for="frequency">É geral, ou pontual? <b class="star">*</b></label><select id="frequency" required><option value="GERAL" selected>GERAL</option><option value="PONTUAL">PONTUAL</option></select></div>
 </div>
 <div class="section">Contexto e necessidade</div><div class="grid">
 <div class="field full"><label for="problem">Qual problema essa solicitação resolve? <b class="star">*</b></label><textarea id="problem" required placeholder="Descreva a dificuldade atual e como a mudança ajudaria no dia a dia."></textarea></div>
@@ -104,7 +104,7 @@ async function loadUsers(){const data=await jsonRequest("/api/admin/users"),list
 window.authReady.then(function(authorized){if(!authorized)return;(function(){
 const ids=["title","requester","date","units","frequency","problem","description","impacts","today","nonimplementation","motivation","otherMotivation","urgency"];
 const required=ids.filter(function(x){return x!=="otherMotivation"});
-const generated=["title","requester","units","frequency","problem","description","impacts","today","nonimplementation","motivation","otherMotivation","urgency"];
+const generated=["title","requester","units","problem","description","impacts","today","nonimplementation","motivation","otherMotivation","urgency"];
 const names={title:"Título",requester:"Solicitante",date:"Data",units:"Unidades impactadas",frequency:"Geral ou pontual",problem:"Problema",description:"Descrição",impacts:"Outros módulos/relatórios",today:"Processo atual",nonimplementation:"Impacto da não implementação",motivation:"Motivação",otherMotivation:"Outra motivação",urgency:"Urgência"};
 const $=function(id){return document.getElementById(id)}, userStorageSuffix=encodeURIComponent($("authUserLabel").textContent), key="clareia.issueDraft.v1."+userStorageSuffix, narrativesKey="clareia.savedNarratives.v1."+userStorageSuffix, issueHistoryKey="automacao.issueHistory.v1."+userStorageSuffix, githubRepoKey="automacao.githubRepository.v1."+userStorageSuffix, rememberGithubRepoKey="automacao.rememberGithubRepository.v1."+userStorageSuffix;const selectedLabelNames=new Set();let githubConnected=false,githubLabels=[],githubProjects=[],aiClassification="",aiAppliedLabel="",savedNarratives=[],issueHistory=[];
 const now=new Date();$("date").value=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
@@ -226,6 +226,7 @@ window.addEventListener('resize',scheduleTextResize);
 new MutationObserver(scheduleTextResize).observe(document.querySelector('main'),{childList:true,subtree:true});
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(scheduleTextResize);
 scheduleTextResize();
+function normalizeFrequency(value){return typeof value==="string"&&value.trim().toUpperCase()==="PONTUAL"?"PONTUAL":"GERAL"}
 function update(){
   resizeTextFields();
   const isOther=$("motivation").value.indexOf("Outras")===0;
@@ -237,7 +238,7 @@ function update(){
   $("checklist").innerHTML=required.map(function(id){const done=!!$(id).value.trim();return '<div class="item '+(done?"done":"")+'"><span class="mark">'+(done?"✓":"")+'</span><span>'+names[id]+'</span></div>'}).join("");
   const draft={};ids.forEach(function(id){draft[id]=$(id).value});draft.__attachments=fieldAttachments;localStorage.setItem(key,JSON.stringify(draft));
 }
-try{const saved=JSON.parse(localStorage.getItem(key)||"{}");ids.forEach(function(id){if(saved[id])$(id).value=saved[id]});attachmentFields.forEach(function(id){fieldAttachments[id]=Array.isArray(saved.__attachments&&saved.__attachments[id])?saved.__attachments[id].filter(function(item){return item&&typeof item.name==="string"&&/^(image|video)\//.test(item.type)&&/^https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9-]+$/.test(item.url)&&typeof item.markdown==="string"}):[]})}catch(e){}
+try{const saved=JSON.parse(localStorage.getItem(key)||"{}");ids.forEach(function(id){if(id==="frequency")$(id).value=normalizeFrequency(saved[id]);else if(saved[id])$(id).value=saved[id]});attachmentFields.forEach(function(id){fieldAttachments[id]=Array.isArray(saved.__attachments&&saved.__attachments[id])?saved.__attachments[id].filter(function(item){return item&&typeof item.name==="string"&&/^(image|video)\//.test(item.type)&&/^https:\/\/github\.com\/user-attachments\/assets\/[a-zA-Z0-9-]+$/.test(item.url)&&typeof item.markdown==="string"}):[]})}catch(e){}
 setupAttachments();ids.forEach(function(id){$(id).addEventListener("input",update);$(id).addEventListener("change",update)});update();
 
 async function updateAIStatus(){
@@ -478,7 +479,7 @@ $("clear").addEventListener("click",function(){
   if(!confirm("Apagar o relato, todos os campos e as seleções deste rascunho? A conexão com o GitHub será mantida."))return;
   if(attachmentUploads||$("organize").disabled){toast("Aguarde a geração da IA ou o envio dos anexos antes de limpar.");return}
   workflow.reset();attachmentFields.forEach(function(id){fieldAttachments[id]=[];renderFieldAttachments(id)});
-  ids.forEach(function(id){$(id).value=""});$("raw").value="";
+  ids.forEach(function(id){$(id).value=id==="frequency"?"GERAL":""});$("raw").value="";
   $("date").value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
   selectedLabelNames.clear();touched.clear();generatedByAi.clear();lastQuestions=[];aiClassification="";aiAppliedLabel="";
   $("aiQuestions").replaceChildren();
@@ -495,7 +496,7 @@ const workflow=window.setupIssueWorkflow({
   capture:function(){const snapshot={};ids.forEach(function(id){snapshot[id]=$(id).value});return {...snapshot,raw:$('raw').value,classificationPreference:$('issueTemplate').value,aiClassification:aiClassification,attachments:fieldAttachments,labels:Array.from(selectedLabelNames),repository:$('githubTarget').textContent.replace('Conectado a ',''),projectId:$('projectSelect').value,statusOptionId:$('projectStatus').value}},
   restore:async function(snapshot){
     if(githubConnected)await loadGithubOptions();
-    ids.forEach(function(id){$(id).value=typeof snapshot[id]==='string'?snapshot[id]:''});$('raw').value=snapshot.raw||'';$('issueTemplate').value=snapshot.classificationPreference||'';$('issueTemplate').dispatchEvent(new Event('change'));aiClassification=snapshot.aiClassification||'';touched.clear();generatedByAi.clear();lastQuestions=[];renderQuestions([]);
+    ids.forEach(function(id){$(id).value=id==='frequency'?normalizeFrequency(snapshot[id]):typeof snapshot[id]==='string'?snapshot[id]:''});$('raw').value=snapshot.raw||'';$('issueTemplate').value=snapshot.classificationPreference||'';$('issueTemplate').dispatchEvent(new Event('change'));aiClassification=snapshot.aiClassification||'';touched.clear();generatedByAi.clear();lastQuestions=[];renderQuestions([]);
     attachmentFields.forEach(function(id){fieldAttachments[id]=snapshot.attachments&&snapshot.attachments[id]||[];renderFieldAttachments(id)});
     selectedLabelNames.clear();const sameRepo=snapshot.repository===$('githubTarget').textContent.replace('Conectado a ','');if(sameRepo)(snapshot.labels||[]).forEach(function(name){if(githubLabels.some(function(item){return item.name===name}))selectedLabelNames.add(name)});renderLabels();
     $('projectSelect').value=sameRepo?snapshot.projectId||'':'';$('projectSelect').dispatchEvent(new Event('change'));$('projectStatus').value=sameRepo?snapshot.statusOptionId||'':'';update();
