@@ -43,7 +43,7 @@ export async function findRecoveredIssue(connection,requestId,startedAt,githubAp
     if(!response.ok)throw fail('Não foi possível verificar o envio anterior no GitHub. Tente novamente.',502);
     const issues=await response.json();
     const issue=issues.find(item=>!item.pull_request&&typeof item.body==='string'&&item.body.includes(marker));
-    if(issue)return {number:issue.number,title:issue.title,url:issue.html_url,repository:connection.owner+'/'+connection.repo,labels:(issue.labels||[]).map(x=>typeof x==='string'?x:x.name),recoveryWarning:'Issue recuperada do GitHub. Confira as labels e o projeto antes de prosseguir.'};
+    if(issue)return {issueState:['open','closed'].includes(issue.state)?issue.state:'unknown',stateCheckedAt:['open','closed'].includes(issue.state)?Date.now():0,number:issue.number,title:issue.title,url:issue.html_url,repository:connection.owner+'/'+connection.repo,labels:(issue.labels||[]).map(x=>typeof x==='string'?x:x.name),recoveryWarning:'Issue recuperada do GitHub. Confira as labels e o projeto antes de prosseguir.'};
     if(issues.length<100)break;
   }
   return null;

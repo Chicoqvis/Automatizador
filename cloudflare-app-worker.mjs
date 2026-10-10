@@ -1,6 +1,7 @@
 import { dailyAiQuotaError } from "./ai-quota.mjs";
 import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mjs';
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
+import { historyStatusTargets, refreshIssueStates } from './history-status.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
@@ -240,6 +241,7 @@ async function createGithubIssue(env, body, userId) {
   if (!response.ok) throw Object.assign(fail(await githubError(response), response.status === 401 || response.status === 403 || response.status === 404 ? response.status : 502),{creationRejected:response.status>=400&&response.status<500});
   const issue = await response.json();
   const result = { number: issue.number, title: issue.title, url: issue.html_url, repository: connection.owner + "/" + connection.repo, labels: (issue.labels || []).map((label) => label.name) };
+  result.issueState=issue.state==='closed'?'closed':'open';result.stateCheckedAt=Date.now();
   if(typeof body._onCreated==='function')await body._onCreated(result);
   const missing = labels.filter((label) => !result.labels.includes(label));
   if (missing.length) {
@@ -397,9 +399,16 @@ async function route(request, env) {
   }
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
+  if(path==='/api/history/statuses'&&method==='POST'){
+    const body=await readBody(request),{results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();
+    const entries=historyStatusTargets(body,results.map(row=>JSON.parse(row.entry)));
+    const report=await refreshIssueStates(entries,await githubConnection(env,userId),githubApi);
+    if(report.entries.length)await env.DB.batch(report.entries.map(entry=>env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.issueState',?,'$.stateCheckedAt',?,'$.stateCheckError',?) WHERE user_id=? AND repository=? AND number=? AND COALESCE(json_extract(entry,'$.stateCheckedAt'),0)<=?").bind(entry.issueState||'unknown',entry.stateCheckedAt||0,entry.stateCheckError||'',userId,entry.repository,entry.number,entry.stateCheckedAt||0)));
+    return json({updated:report.updated,failed:report.failed,skipped:report.skipped});
+  }
   if(path==='/api/history'&&method==='POST'){
     const body=await readBody(request,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw fail('Envie até 200 registros.');
-    const entries=body.issues.map(validateHistoryEntry);if(entries.length)await env.DB.batch(entries.map(entry=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt)));return json({ok:true});
+    const entries=body.issues.map(item=>validateHistoryEntry({...item,issueState:'unknown',stateCheckedAt:0,stateCheckError:''}));if(entries.length)await env.DB.batch(entries.map(entry=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt)));return json({ok:true});
   }
   if(path==='/api/history'&&method==='DELETE'){await env.DB.prepare('DELETE FROM issue_history WHERE user_id=?').bind(userId).run();return json({ok:true})}
   if(path==='/api/drafts'&&method==='GET'){
@@ -496,7 +505,7 @@ async function route(request, env) {
     return json({ connected: false });
   }
   if (path === "/api/github/issues" && method === "POST") {
-    const body=await readBody(request),connection=await githubConnection(env,userId);if(!connection)throw fail("Conecte um repositório GitHub antes de criar a issue.",409);const result=await recoverableIssue(body,connection.owner+"/"+connection.repo,d1OperationStore(env.DB,userId),payload=>createGithubIssue(env,payload,userId),(id,started)=>findRecoveredIssue(connection,id,started,githubApi));if(!result.replayed)try{await env.DB.prepare("INSERT OR REPLACE INTO account_memory(user_id,repository,number,title,content,created_at) VALUES(?,?,?,?,?,?)").bind(userId,result.repository.toLowerCase(),result.number,result.title,memoryContent(body),Date.now()).run()}catch(error){result.memoryError="A issue foi criada, mas não foi possível guardar a memória da conta."}try{const entry=validateHistoryEntry({...result,createdAt:Date.now()});await env.DB.prepare("INSERT OR REPLACE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)").bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt).run();result.createdAt=entry.createdAt}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return json(result,201);
+    const body=await readBody(request),connection=await githubConnection(env,userId);if(!connection)throw fail("Conecte um repositório GitHub antes de criar a issue.",409);const result=await recoverableIssue(body,connection.owner+"/"+connection.repo,d1OperationStore(env.DB,userId),payload=>createGithubIssue(env,payload,userId),(id,started)=>findRecoveredIssue(connection,id,started,githubApi));if(!result.replayed)try{await env.DB.prepare("INSERT OR REPLACE INTO account_memory(user_id,repository,number,title,content,created_at) VALUES(?,?,?,?,?,?)").bind(userId,result.repository.toLowerCase(),result.number,result.title,memoryContent(body),Date.now()).run()}catch(error){result.memoryError="A issue foi criada, mas não foi possível guardar a memória da conta."}try{const entry=validateHistoryEntry({...result,createdAt:Date.now()});await env.DB.prepare("INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)").bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt).run();result.createdAt=entry.createdAt}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return json(result,201);
   }
   if (path === "/api/status" && method === "GET") return json({ provider: "cloudflare", available: true, model: env.CLOUDFLARE_AI_MODEL || MODEL_DEFAULT, modelInstalled: true });
   if (path === "/api/draft" && method === "POST") return json(await generateDraft(env, await readBody(request),userId));

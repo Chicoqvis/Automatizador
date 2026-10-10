@@ -10,6 +10,7 @@ import { memoryContent,selectAccountMemory } from '../account-memory.mjs';
 import { dailyAiQuotaError } from '../ai-quota.mjs';
 import { quotaSummary, measuredAiUsage } from '../daily-usage.mjs';
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from '../issue-recovery.mjs';
+import { historyStatusTargets, refreshIssueStates } from '../history-status.mjs';
 
 test('cotas calculam saldo, renovação e não inventam tokens ausentes',()=>{
   const now=Date.parse('2026-10-10T23:00:00Z');
@@ -84,6 +85,26 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   assert.equal((await request('/api/history','DELETE',undefined,'bob')).status,200);
   assert.equal((await request('/api/history')).data.issues.length,1);
   assert.equal((await request('/api/history','POST',{issues:[{...entry,url:'https://example.com/issues/42'}]})).status,400);
+  assert.equal((await request('/api/history/statuses','POST',{issues:[entry]})).status,409);
+  assert.equal((await request('/api/history/statuses','POST',{issues:[entry]},'unknown')).status,401);
+  const bytes=new Uint8Array(32);env.GITHUB_TOKEN_ENCRYPTION_KEY=Buffer.from(bytes).toString('base64url');
+  const encryptionKey=await crypto.subtle.importKey('raw',bytes,'AES-GCM',false,['encrypt']),iv=new Uint8Array(12),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},encryptionKey,new TextEncoder().encode('test-token'));
+  const tokenCipher=Buffer.from(iv).toString('base64url')+'.'+Buffer.from(cipher).toString('base64url');
+  for(const user of ['alice','bob'])db.prepare('INSERT INTO github_connections VALUES(?,?,?,?,?,?,?)').run(user,'owner','repo','https://github.com/owner/repo','',tokenCipher,Date.now());
+  const bobEntry={...entry,number:43,url:'https://github.com/owner/repo/issues/43'};await request('/api/history','POST',{issues:[bobEntry]},'bob');
+  const originalFetch=globalThis.fetch;let apiCalls=0;
+  try{
+    globalThis.fetch=async(url,options)=>{apiCalls++;assert.equal(new URL(url).pathname,'/repos/owner/repo/issues/42');assert.equal(options.headers.Authorization,'Bearer test-token');return Response.json({number:42,state:'closed'})};
+    assert.equal((await request('/api/history/statuses','POST',{issues:[bobEntry]})).data.updated,0);assert.equal(apiCalls,0);
+    assert.equal((await request('/api/history/statuses','POST',{issues:[entry]})).data.updated,1);
+    const closed=(await request('/api/history')).data.issues[0];assert.equal(closed.issueState,'closed');assert(closed.stateCheckedAt>0);
+    assert.equal((await request('/api/history','GET',undefined,'bob')).data.issues[0].issueState,'unknown');
+    globalThis.fetch=async()=>Response.json({message:'Not found'},{status:404});
+    assert.equal((await request('/api/history/statuses','POST',{issues:[entry]})).data.failed,1);
+    const retained=(await request('/api/history')).data.issues[0];assert.equal(retained.issueState,'closed');assert.equal(retained.stateCheckedAt,closed.stateCheckedAt);assert.match(retained.stateCheckError,/não encontrada/);
+    globalThis.fetch=async()=>Response.json({number:42,state:'open'});await request('/api/history/statuses','POST',{issues:[entry]});assert.equal((await request('/api/history')).data.issues[0].issueState,'open');
+    assert.equal((await request('/api/history/statuses','POST',{issues:Array(26).fill(entry)})).status,400);
+  }finally{globalThis.fetch=originalFetch;db.prepare('DELETE FROM github_connections').run();await request('/api/history','DELETE',undefined,'bob')}
   assert.equal((await request('/api/history','DELETE')).status,200);
   assert.equal((await request('/api/history')).data.issues.length,0);
   for(const user of ['alice','bob'])db.prepare('INSERT INTO account_memory VALUES(?,?,?,?,?,?)').run(user,'owner/repo',1,'Filtro marcação agendamento','Filtro marcação agendamento. MEMORIA_PRIVADA_'+user,Date.now());
@@ -138,6 +159,15 @@ test('recuperação procura o marcador no GitHub sem criar outra issue',async()=
   const found=await findRecoveredIssue({owner:'owner',repo:'repo',token:'token'},id,Date.now(),async(path,token)=>{calls++;assert.equal(token,'token');assert(path.includes('state=all'));return Response.json([{number:42,title:'Recuperada',body:issueMarker(id),html_url:'https://github.com/owner/repo/issues/42',labels:[{name:'melhoria'}]}])});
   assert.equal(found.number,42);assert.equal(calls,1);
   assert.equal(await findRecoveredIssue({owner:'o',repo:'r',token:'token'},id,Date.now(),async()=>Response.json([{number:1,body:'Outra solicitação'}])),null);
+});
+
+test('consulta de status usa somente referências salvas e não muda o status do projeto',async()=>{
+  const entry={repository:'owner/repo',number:42,issueState:'open',status:'Em análise',stateCheckedAt:123};
+  assert.deepEqual(historyStatusTargets({issues:[{repository:'owner/repo',number:99}]},[entry]),[]);
+  assert.throws(()=>historyStatusTargets({issues:[{repository:'../repo',number:0}]},[entry]));
+  const report=await refreshIssueStates([entry,{...entry,repository:'other/repo'}],{owner:'owner',repo:'repo',token:'test'},async()=>Response.json({number:42,state:'closed'}),500);
+  assert.equal(report.updated,1);assert.equal(report.skipped,1);assert.equal(report.entries[0].status,'Em análise');assert.equal(report.entries[0].stateCheckedAt,500);
+  const failed=await refreshIssueStates([entry],{owner:'owner',repo:'repo',token:'test'},async()=>Response.json({number:42,state:'closed',pull_request:{}}));assert.equal(failed.failed,1);assert.equal(failed.entries[0].issueState,'open');
 });
 
 test('memória usa conteúdos relacionados e respeita o repositório',()=>{

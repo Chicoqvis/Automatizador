@@ -140,3 +140,10 @@ Envios ao GitHub guardam uma tentativa por conta no navegador, incluindo texto, 
 No servidor local, o registro fica em data/issue-operations.json. As tentativas não contêm tokens; os arquivos em data continuam ignorados pelo Git. O repositório e o conteúdo original precisam permanecer iguais ao recuperar. Descartar a tentativa no navegador não cancela uma operação em andamento nem apaga uma issue.
 
 Alertas administrativos aparecem em 80% e 95% do consumo estimado, mostrando apenas o nível mais alto atingido; ao esgotar, indicam cota atingida. A renovação remove os alertas na próxima consulta. Métricas sem saldo calculável não geram um percentual inventado.
+## Acompanhamento das issues no histórico
+
+O histórico mostra Aberta, Fechada ou Status ainda não consultado, com data da última verificação e aviso se a consulta falhou. O estado da issue (issueState) é independente da coluna do projeto (status). Novas issues já registram o estado retornado na criação. Importações antigas começam sem status verificado.
+
+Atualizar status no GitHub consulta apenas issues presentes no histórico da conta autenticada e pertencentes ao repositório atualmente conectado. Para outro repositório, conecte-o e repita a atualização. As consultas são somente de leitura no GitHub, em lotes de até 25 issues e com quatro chamadas simultâneas; não há consulta automática de status ao abrir a página. Resultados persistem no D1 ou no arquivo de histórico local, ficando disponíveis nos outros dispositivos. Uma falha preserva o último estado conhecido; 404 não significa issue fechada. Atualizar histórico apenas carrega os dados já salvos na conta.
+
+A consulta utiliza as permissões e limites do token GitHub conectado e consome chamadas da ferramenta. Não precisa de migração: os novos campos ficam no JSON do histórico. Recuperar um envio já concluído não sobrescreve um status mais recente do histórico.

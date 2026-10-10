@@ -178,8 +178,11 @@ function renderIssueHistory(){
   matches.forEach(function(item){
     const row=document.createElement("div");row.className="history-entry";
     try{const url=new URL(item.url);if(url.protocol==="https:"&&url.hostname==="github.com"){const link=document.createElement("a");link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";link.textContent="Issue #"+item.number+" · "+item.title;row.appendChild(link)}else throw new Error("URL inválida")}catch(e){const title=document.createElement("small");title.textContent="Issue #"+item.number+" · "+item.title;row.appendChild(title)}
+    const state=document.createElement('small');state.className='history-issue-state';state.dataset.state=item.issueState||'unknown';state.textContent=item.issueState==='open'?'● Aberta':item.issueState==='closed'?'● Fechada':'Status ainda não consultado';state.style.fontWeight='700';row.append(state);
+    if(item.stateCheckedAt){const checked=document.createElement('small');checked.textContent='Status consultado em '+new Date(item.stateCheckedAt).toLocaleString('pt-BR');row.append(checked)}
+    if(item.stateCheckError){const warning=document.createElement('small');warning.textContent='Falha na última consulta: '+item.stateCheckError;row.append(warning)}
     const details=document.createElement("small");details.textContent=item.repository+" · "+new Date(item.createdAt).toLocaleString("pt-BR");row.appendChild(details);
-    const metadata=[];if(item.labels&&item.labels.length)metadata.push("Labels: "+item.labels.join(", "));if(item.project)metadata.push("Projeto: "+item.project);if(item.status)metadata.push("Status: "+item.status);
+    const metadata=[];if(item.labels&&item.labels.length)metadata.push("Labels: "+item.labels.join(", "));if(item.project)metadata.push("Projeto: "+item.project);if(item.status)metadata.push("Status do projeto: "+item.status);
     if(metadata.length){const extra=document.createElement("small");extra.textContent=metadata.join(" · ");row.appendChild(extra)}
     list.appendChild(row);
   });
@@ -190,14 +193,24 @@ renderIssueHistory();
 legacyIssueHistory=issueHistory.slice();
 async function syncAccountHistory(){
   const status=$('historySyncStatus');status.textContent='Atualizando histórico da conta…';
-  try{const response=await fetch('/api/history',{cache:'no-store'}),data=await response.json();if(!response.ok||!Array.isArray(data.issues))throw new Error(data.error||'Não foi possível carregar o histórico da conta.');issueHistory=data.issues;localStorage.setItem(issueHistoryKey,JSON.stringify(issueHistory));renderIssueHistory();const missing=legacyIssueHistory.filter(function(item){return !issueHistory.some(function(row){return row.number===item.number&&row.repository.toLowerCase()===item.repository.toLowerCase()})});legacyIssueHistory=missing;$('importIssueHistory').hidden=!missing.length;status.textContent='Histórico da conta atualizado. Disponível em outros dispositivos.'}
+  try{const response=await fetch('/api/history',{cache:'no-store'}),data=await response.json();if(!response.ok||!Array.isArray(data.issues))throw new Error(data.error||'Não foi possível carregar o histórico da conta.');issueHistory=data.issues;localStorage.setItem(issueHistoryKey,JSON.stringify(issueHistory));renderIssueHistory();const missing=legacyIssueHistory.filter(function(item){return !issueHistory.some(function(row){return row.number===item.number&&row.repository.toLowerCase()===item.repository.toLowerCase()})});legacyIssueHistory=missing;$('importIssueHistory').hidden=!missing.length;status.textContent='Histórico da conta atualizado. Disponível em outros dispositivos.';return true}
   catch(error){status.textContent=error.message+' Exibindo a cópia local disponível.';$('importIssueHistory').hidden=!legacyIssueHistory.length}
 }
 $('refreshIssueHistory').addEventListener('click',syncAccountHistory);
+const refreshStatuses=document.createElement('button');refreshStatuses.type='button';refreshStatuses.className='btn soft';refreshStatuses.id='refreshIssueStatuses';refreshStatuses.textContent='Atualizar status no GitHub';$('refreshIssueHistory').after(refreshStatuses);
+refreshStatuses.addEventListener('click',async function(){
+  if(!githubConnected){$('historySyncStatus').textContent='Conecte um repositório GitHub para atualizar os status.';return}
+  const repository=$('githubTarget').textContent.replace('Conectado a ','').toLowerCase(),entries=issueHistory.filter(item=>item.repository.toLowerCase()===repository),other=issueHistory.length-entries.length;
+  if(!entries.length){$('historySyncStatus').textContent='Não há issues deste repositório no histórico. Conecte o repositório das issues que deseja acompanhar.';return}
+  refreshStatuses.disabled=true;$('refreshIssueHistory').disabled=true;let updated=0,failed=0;
+  try{for(let offset=0;offset<entries.length;offset+=25){$('historySyncStatus').textContent='Consultando status no GitHub… '+offset+' de '+entries.length;const response=await fetch('/api/history/statuses',{method:'POST',signal:AbortSignal.timeout(90000),headers:{'Content-Type':'application/json'},body:JSON.stringify({issues:entries.slice(offset,offset+25).map(({repository,number})=>({repository,number}))})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível atualizar os status.');updated+=data.updated||0;failed+=data.failed||0}
+    await syncAccountHistory();$('historySyncStatus').textContent=updated+' status atualizados no GitHub.'+(failed?' '+failed+' consultas falharam; confira os avisos nas issues.':'')+(other?' Para atualizar issues de outros repositórios, conecte cada repositório.':'');
+  }catch(error){await syncAccountHistory();$('historySyncStatus').textContent=error.message+' Os últimos status conhecidos foram preservados.'}finally{refreshStatuses.disabled=false;$('refreshIssueHistory').disabled=false;window.refreshAdminQuotaAlerts?.()}
+});
 $('importIssueHistory').addEventListener('click',async function(){const button=this;button.disabled=true;try{const response=await fetch('/api/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({issues:legacyIssueHistory.slice(0,200)})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Falha ao importar.');await syncAccountHistory()}catch(error){$('historySyncStatus').textContent=error.message}finally{button.disabled=false}});
 syncAccountHistory();
 function recordIssueHistory(result){
-  const entry={number:result.number,title:result.title||$("title").value.trim(),url:result.url,repository:result.repository,labels:Array.isArray(result.labels)?result.labels:[],project:result.project||"",status:result.status||"",createdAt:result.createdAt||Date.now()};
+  const entry={number:result.number,title:result.title||$("title").value.trim(),url:result.url,repository:result.repository,labels:Array.isArray(result.labels)?result.labels:[],project:result.project||"",status:result.status||"",issueState:result.issueState||'unknown',stateCheckedAt:result.stateCheckedAt||0,createdAt:result.createdAt||Date.now()};
   issueHistory=[entry].concat(issueHistory.filter(function(item){return item.number!==entry.number||item.repository!==entry.repository})).slice(0,200);
   try{localStorage.setItem(issueHistoryKey,JSON.stringify(issueHistory));renderIssueHistory()}catch(e){toast("Issue criada, mas não foi possível salvar no histórico local.")}
 }

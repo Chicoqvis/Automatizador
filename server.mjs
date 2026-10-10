@@ -4,6 +4,7 @@ import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
 import { dailyAiQuotaError } from './ai-quota.mjs';
 import { recoverableIssue, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
+import { historyStatusTargets, refreshIssueStates } from './history-status.mjs';
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -510,6 +511,7 @@ async function createGithubIssue(body, userId) {
   }
   const issue = await response.json();
   const result = { number: issue.number, title: issue.title, url: issue.html_url, repository: connection.owner + "/" + connection.repo };
+  result.issueState=issue.state==='closed'?'closed':'open';result.stateCheckedAt=Date.now();
   if(typeof body._onCreated==='function')await body._onCreated({...result,labels:(issue.labels||[]).map(x=>x.name)});
   let attachedLabels = Array.isArray(issue.labels) ? issue.labels.map((label) => label.name) : [];
   const missingLabels = requestedLabels.filter((label) => !attachedLabels.includes(label));
@@ -618,7 +620,14 @@ const server = http.createServer(async (req, res) => {
     }
     if(pathname==="/api/memory"&&method==="DELETE"){persistLocalMemory(localMemory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
     if(pathname==='/api/history'&&method==='GET')return send(res,200,{issues:localHistory().filter(row=>row.userId===userId).map(row=>row.entry).sort((a,b)=>b.createdAt-a.createdAt).slice(0,500)});
-    if(pathname==='/api/history'&&method==='POST'){const body=await readBody(req,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw workflowError('Envie até 200 registros.');addLocalHistory(userId,body.issues);return send(res,200,{ok:true})}
+    if(pathname==='/api/history/statuses'&&method==='POST'){
+      const body=await readBody(req),entries=historyStatusTargets(body,localHistory().filter(row=>row.userId===userId).map(row=>row.entry).sort((a,b)=>b.createdAt-a.createdAt).slice(0,500));
+      let connection=githubConnections.get(userId);if(connection?.githubUser){await ensureGithubOAuthIdentity(userId);connection=githubConnections.get(userId)}
+      const report=await refreshIssueStates(entries,connection,githubApi);
+      const stored=localHistory();for(const entry of report.entries){const row=stored.find(row=>row.userId===userId&&row.entry.repository===entry.repository&&row.entry.number===entry.number);if(row&&(row.entry.stateCheckedAt||0)<=(entry.stateCheckedAt||0))Object.assign(row.entry,{issueState:entry.issueState||'unknown',stateCheckedAt:entry.stateCheckedAt||0,stateCheckError:entry.stateCheckError||''})}persistLocalHistory(stored);
+      return send(res,200,{updated:report.updated,failed:report.failed,skipped:report.skipped});
+    }
+    if(pathname==='/api/history'&&method==='POST'){const body=await readBody(req,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw workflowError('Envie até 200 registros.');addLocalHistory(userId,body.issues.map(item=>({...item,issueState:'unknown',stateCheckedAt:0,stateCheckError:''})));return send(res,200,{ok:true})}
     if(pathname==='/api/history'&&method==='DELETE'){persistLocalHistory(localHistory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
     if(pathname.startsWith('/api/drafts')){
       const draftFile=path.join(DATA_DIR,'drafts.json');let stored=[];
