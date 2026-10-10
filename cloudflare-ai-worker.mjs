@@ -45,7 +45,7 @@ export default {
       const result = await env.AI.run(model, {
         messages: body.messages,
         temperature: 0,
-        max_tokens: 1600,
+        max_tokens: 2600,
         response_format: { type: "json_schema", json_schema: body.schema }
       });
       const output = result && (result.response || result.output_text);
