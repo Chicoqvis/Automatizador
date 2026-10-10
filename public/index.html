@@ -466,7 +466,7 @@ $("connectGithub").addEventListener("click",async function(){
 
 const extraProjectBox=document.createElement('section');extraProjectBox.style.marginTop='10px';const extraTitle=document.createElement('label');extraTitle.textContent='Também adicionar aos projetos';const extraList=document.createElement('div');extraProjectBox.append(extraTitle,extraList);$('projectStatusBox').after(extraProjectBox);const extraProjectPicker=window.createProjectPicker(extraList);
 function selectedProjects(){const primary=$('projectSelect').value?[{id:$('projectSelect').value,statusFieldId:$('projectStatus').dataset.fieldId||'',statusOptionId:$('projectStatus').value}]:[];return [...primary,...extraProjectPicker.capture()]}
-const savedRepositories=window.setupSavedRepositories({canSwitch:()=>!issueSubmitting&&!attachmentUploads&&!$('organize').disabled&&!Object.values(failedAttachments).some(items=>items.length),onSwitch:async result=>{githubConnected=true;selectedLabelNames.clear();aiAppliedLabel='';extraProjectPicker.restore([]);$('githubSetup').hidden=true;$('githubConnected').hidden=false;$('githubTarget').textContent='Conectado a '+result.repository;$('githubOptions').hidden=false;await loadGithubOptions();$('projectSelect').value='';$('projectSelect').dispatchEvent(new Event('change'));update();await refreshMemoryStatus()}});
+const savedRepositories=window.setupSavedRepositories({canSwitch:()=>!issueSubmitting&&!attachmentUploads&&!$('organize').disabled&&!Object.values(failedAttachments).some(items=>items.length),onSwitch:activateNotificationRepository});
 
 function renderLabels(){
   const query=$("labelSearch").value.trim().toLowerCase(),list=$("labelList"),selected=selectedLabelNames;list.replaceChildren();
@@ -616,6 +616,13 @@ const workflow=window.setupIssueWorkflow({
     if(snapshot.repository&&!sameRepo)toast('Rascunho aberto. Conecte o repositório '+snapshot.repository+' e revise labels/projeto antes de enviar.');
   }
 });
+async function activateNotificationRepository(result){githubConnected=true;selectedLabelNames.clear();aiAppliedLabel='';extraProjectPicker.restore([]);$('githubSetup').hidden=true;$('githubConnected').hidden=false;$('githubTarget').textContent='Conectado a '+result.repository;$('githubOptions').hidden=false;await loadGithubOptions();$('projectSelect').value='';$('projectSelect').dispatchEvent(new Event('change'));update();await refreshMemoryStatus()}
+window.openNotificationComments=async function(item,onReady){
+ if(issueSubmitting||attachmentUploads||$('organize').disabled||Object.values(failedAttachments).some(items=>items.length))throw new Error('Aguarde as operações e resolva os anexos pendentes antes de abrir a conversa.');
+ const target=$('githubTarget').textContent.replace('Conectado a ','').toLowerCase();
+ if(!githubConnected||target!==item.repository.toLowerCase()){const response=await fetch('/api/github/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repository:item.repository})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível conectar o repositório da issue.');await activateNotificationRepository(data)}
+ onReady();await window.openIssueComments(item,{account:$('authUserLabel').textContent,review:workflow.review,renderBody:workflow.renderBody,onSaved:syncAccountHistory});
+};
 generated.filter(function(id){return !["urgency","motivation","requester","units"].includes(id)}).forEach(function(id){
   const field=$(id),button=document.createElement('button');button.type='button';button.className='btn soft refine-field';button.dataset.refineField=id;button.textContent='Refazer este campo com IA';button.addEventListener('click',async function(){if($('organize').disabled)return;const instruction=await workflow.refine(names[id]);if(instruction===null)return;runDraft(false,id,instruction)});const actions=document.createElement('div');actions.className='field-ai-actions';const undo=document.createElement('button');undo.type='button';undo.className='btn soft';undo.textContent='Desfazer IA';undo.dataset.undoField=id;undo.disabled=true;undo.addEventListener('click',function(){undoAiField(id)});actions.append(button,undo);field.after(actions);
 });
