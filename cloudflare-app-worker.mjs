@@ -300,7 +300,7 @@ async function generateDraft(env, body) {
   const context = raw.replace(/\s+/g, " ").trim();
   for (const key of fields) {
     if (key === "otherMotivation") continue;
-    if (!normalized[key]) normalized[key] = key === "title" ? context.slice(0, 90) : "Não informado no relato.";
+    if (!normalized[key]) normalized[key] = key === "title" ? context.slice(0, 90) : key === "today" ? "Análise de fluxo a validar: a rotina relacionada a “" + context.slice(0,420) + "” deve ser avaliada no ponto de uso da mudança, considerando a ação realizada pela equipe e o resultado esperado." : "Não informado no relato.";
   }
   if (normalized.motivation === MOTIVATION[5] && !normalized.otherMotivation) normalized.otherMotivation = "A motivação específica não foi detalhada no relato.";
   if (normalized.motivation !== MOTIVATION[5]) normalized.otherMotivation = "";

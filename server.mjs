@@ -200,7 +200,7 @@ async function generate(body) {
     problem: "O relato não trouxe detalhes suficientes para descrever o comportamento observado e a dificuldade.",
     description: "O relato não trouxe detalhes suficientes para definir a mudança solicitada e o resultado esperado.",
     impacts: "Impactos em outros módulos ou relatórios não foram informados no relato.",
-    today: "O fluxo atual e eventuais medidas de contorno não foram informados no relato.",
+    today: "Análise de fluxo a validar: a rotina relacionada a “" + context + "” deve ser avaliada no ponto de uso da mudança, considerando a ação realizada pela equipe e o resultado esperado.",
     nonimplementation: "Não há informações suficientes no relato para estimar a consequência da não implementação.",
     otherMotivation: "A motivação específica não foi detalhada no relato."
   };
