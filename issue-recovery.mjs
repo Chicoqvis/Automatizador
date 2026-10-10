@@ -11,7 +11,7 @@ export async function recoverableIssue(body,repository,store,create,recover){
   if(!body.title?.trim()||!body.body?.trim())throw fail('Informe título e conteúdo antes de criar a issue.',400);
   if(!/^[a-f0-9-]{36}$/i.test(body.requestId))throw fail('Identificador de envio inválido.',400);
   if(body.expectedRepository?.toLowerCase()!==repository.toLowerCase())throw fail('O repositório conectado mudou. Reconecte o repositório do envio pendente antes de recuperar.');
-  const source=JSON.stringify([repository.toLowerCase(),body.title,body.body,body.raw,body.labels,body.projectId,body.statusFieldId,body.statusOptionId]);
+  const parts=[repository.toLowerCase(),body.title,body.body,body.raw,body.labels,body.projectId,body.statusFieldId,body.statusOptionId];if(Array.isArray(body.projects))parts.push(body.projects);const source=JSON.stringify(parts);
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(source));
   const fingerprint=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('');
   let claimed=await store.claim(body.requestId,fingerprint);

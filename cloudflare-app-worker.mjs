@@ -3,7 +3,8 @@ import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mj
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
 import { historyStatusTargets, refreshIssueStates } from './history-status.mjs';
 import { issueReference, readEditableIssue, updateExistingIssue, revisedMemoryContent } from './issue-editor.mjs';
-import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
+import { labelsRevision, setIssueLabels, projectSelections, addIssueProjects, listIssueComments, sendIssueComment } from './github-issue-actions.mjs';
+import { memoryContent, selectAccountMemory, memoryInstruction, memorySources, memorySearch } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
@@ -189,6 +190,7 @@ async function connectGithub(env, body, userId) {
   await env.DB.prepare(`INSERT INTO github_connections(user_id,owner,repo,repository_url,github_user,token_cipher,updated_at)
     VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET owner=excluded.owner,repo=excluded.repo,repository_url=excluded.repository_url,github_user=excluded.github_user,token_cipher=excluded.token_cipher,updated_at=excluded.updated_at`)
     .bind(userId, owner, repo, repository.html_url, identity?.login || "", await encryptSecret(token, env), Date.now()).run();
+  await env.DB.prepare('INSERT OR REPLACE INTO saved_repositories SELECT user_id,lower(owner||\'/\'||repo),owner,repo,repository_url,github_user,token_cipher,updated_at FROM github_connections WHERE user_id=?').bind(userId).run();
   return { connected: true, repository: owner + "/" + repo, repositoryUrl: repository.html_url, githubUser: identity?.login || "" };
 }
 async function githubGraphql(connection, query, variables) {
@@ -228,6 +230,7 @@ async function githubOptions(env, userId) {
   return { labels: Array.isArray(labels) ? labels.map(({ name, description, color }) => ({ name, description, color })) : [], projects, projectsError };
 }
 async function createGithubIssue(env, body, userId) {
+  projectSelections(body);
   const connection = await githubConnection(env, userId);
   if (!connection) throw fail("Conecte um repositório GitHub antes de criar a issue.", 409);
   const title = clean(body.title), description = typeof body.body === "string" ? body.body.trim() : "";
@@ -251,22 +254,9 @@ async function createGithubIssue(env, body, userId) {
     if (lr.ok) result.labels = (await lr.json()).map((label) => label.name);
     else result.labelsError = await githubError(lr);
   }
-  if (body.projectId) {
-    try {
-      const metadata = await githubOptions(env, userId);
-      const project = metadata.projects.find((item) => item.id === body.projectId);
-      if (!project) throw new Error("O projeto selecionado não está disponível para este token.");
-      const added = await githubGraphql(connection, `mutation($projectId:ID!,$contentId:ID!){addProjectV2ItemById(input:{projectId:$projectId,contentId:$contentId}){item{id}}}`, { projectId: project.id, contentId: issue.node_id });
-      const itemId = added.addProjectV2ItemById.item.id;
-      result.project = project.title;
-      if (body.statusOptionId) {
-        const field = project.singleSelectFields.find((item) => item.id === body.statusFieldId && item.name.toLowerCase() === "status");
-        if (!field || !field.options.some((option) => option.id === body.statusOptionId)) throw new Error("A coluna selecionada não pertence ao campo Status deste projeto.");
-        await githubGraphql(connection, `mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$optionId:String!){updateProjectV2ItemFieldValue(input:{projectId:$projectId,itemId:$itemId,fieldId:$fieldId,value:{singleSelectOptionId:$optionId}}){projectV2Item{id}}}`, { projectId: project.id, itemId, fieldId: field.id, optionId: body.statusOptionId });
-        result.status = field.options.find((option) => option.id === body.statusOptionId).name;
-      }
-    } catch (error) { result.projectError = error.message || "A issue foi criada, mas não foi possível adicioná-la ao projeto/status."; }
-  }
+  const choices=projectSelections(body);
+  if(choices.length){try{result.projects=await addIssueProjects(connection,issue.node_id,body,await githubOptions(env,userId),githubGraphql);const success=result.projects.filter(p=>!p.error);if(success.length){result.project=success[0].title;result.status=success[0].status}const failed=result.projects.filter(p=>p.error);if(failed.length)result.projectError=failed.map(p=>p.title+': '+p.error).join('; ')}catch(error){result.projectError=error.message||'Falha ao incluir nos projetos.'}}
+
   return result;
 }
 function guidance(preference) {
@@ -389,7 +379,8 @@ async function route(request, env) {
   }
   if(path==="/api/memory"&&method==="GET"){const row=await env.DB.prepare("SELECT COUNT(*) AS count FROM account_memory WHERE user_id=?").bind(userId).first();return json({count:row.count})}
   if(path==='/api/memory/entries'&&method==='GET'){
-    const {results}=await env.DB.prepare('SELECT repository,number,title,created_at FROM account_memory WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();
+    const {query,pattern}=memorySearch(url.searchParams.get('q'));
+    const {results}=await env.DB.prepare("SELECT repository,number,title,created_at,substr(content,max(1,instr(lower(content),lower(?))-60),220) AS snippet FROM account_memory WHERE user_id=? AND (title LIKE ? ESCAPE '\\' OR repository LIKE ? ESCAPE '\\' OR CAST(number AS TEXT) LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') ORDER BY created_at DESC LIMIT 500").bind(query,userId,pattern,pattern,pattern,pattern).all();
     return json({entries:results});
   }
   if(path==='/api/memory/entry'&&['GET','DELETE'].includes(method)){
@@ -402,6 +393,16 @@ async function route(request, env) {
   }
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
+  const action=path.match(/^\/api\/history\/(labels|comments|projects)$/);
+  if(action){
+    const ref=issueReference(url.searchParams),row=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).first();if(!row)throw fail('Issue não encontrada no histórico da sua conta.',404);
+    const connection=await githubConnection(env,userId);
+    if(action[1]==='labels'&&method==='GET'){const issue=await readEditableIssue(ref,connection,githubApi);return json({labels:issue.labels,labelsRevision:await labelsRevision(issue.labels)})}
+    if(action[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(request),githubApi,await githubOptions(env,userId));let warning='';try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.labels',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(result.labels),userId,ref.repository,ref.number).run()}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return json({...result,warning})}
+    if(action[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));return json({comments:data.comments,hasMore:data.hasMore})}return json({comment:await sendIssueComment(ref,connection,await readBody(request),githubApi,d1OperationStore(env.DB,userId))},201)}
+    if(action[1]==='projects'&&method==='POST'){const body=await readBody(request),issue=await readEditableIssue(ref,connection,githubApi),projects=await addIssueProjects(connection,issue.nodeId,body,await githubOptions(env,userId),githubGraphql);let warning='';try{const previous=JSON.parse(row.entry).projects||[],ids=new Set(projects.map(p=>p.id)),merged=[...previous.filter(p=>!ids.has(p.id)),...projects];await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.projects',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(merged),userId,ref.repository,ref.number).run()}catch{warning='Projetos processados no GitHub, mas o histórico não pôde ser sincronizado.'}return json({projects,warning})}
+    throw fail('Operação não encontrada.',404);
+  }
   if(path==='/api/history/issue'&&['GET','PATCH'].includes(method)){
     const ref=issueReference(url.searchParams),row=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).first();
     if(!row)throw fail('Issue não encontrada no histórico da sua conta.',404);
@@ -491,7 +492,7 @@ async function route(request, env) {
         if (count.count < 2) throw fail("Mantenha pelo menos um administrador ativo.", 409);
       }
       updates.push(env.DB.prepare("UPDATE users SET active=? WHERE id=?").bind(body.active ? 1 : 0, target.id));
-      if (!body.active) updates.push(env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(target.id), env.DB.prepare("DELETE FROM github_connections WHERE user_id=?").bind(target.id), env.DB.prepare("DELETE FROM github_identities WHERE user_id=?").bind(target.id));
+      if (!body.active) updates.push(env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(target.id), env.DB.prepare("DELETE FROM github_connections WHERE user_id=?").bind(target.id), env.DB.prepare("DELETE FROM github_identities WHERE user_id=?").bind(target.id),env.DB.prepare('DELETE FROM saved_repositories WHERE user_id=?').bind(target.id));
     }
     if (body.password !== undefined) {
       if (!validPassword(body.password)) throw fail("A senha não pode ficar vazia e deve ter até 128 caracteres.");
@@ -515,9 +516,17 @@ async function route(request, env) {
     return json(connection ? { connected: true, repository: connection.owner + "/" + connection.repo, repositoryUrl: connection.repository_url, githubUser: connection.github_user || "" } : { connected: false });
   }
   if (path === "/api/github/connect" && method === "POST") return json(await connectGithub(env, await readBody(request), userId));
+  if(path==='/api/github/repositories'&&method==='GET'){const {results}=await env.DB.prepare('SELECT repository,repository_url,github_user FROM saved_repositories WHERE user_id=? ORDER BY repository').bind(userId).all();return json({repositories:results})}
+  if(path==='/api/github/repositories'&&method==='DELETE'){const body=await readBody(request);await env.DB.prepare('DELETE FROM saved_repositories WHERE user_id=? AND repository=?').bind(userId,String(body.repository||'').toLowerCase()).run();return json({ok:true})}
+  if(path==='/api/github/switch'&&method==='POST'){
+    const body=await readBody(request),row=await env.DB.prepare('SELECT * FROM saved_repositories WHERE user_id=? AND repository=?').bind(userId,String(body.repository||'').toLowerCase()).first();if(!row)throw fail('Repositório não encontrado entre os salvos na sua conta.',404);
+    const token=row.github_user?(await githubIdentity(env,userId))?.token:await decryptSecret(row.token_cipher,env);if(!token)throw fail('Autorize sua conta GitHub novamente.',401);
+    const response=await githubApi(`/repos/${row.owner}/${row.repo}`,token);if(!response.ok)throw fail('O acesso salvo expirou ou não permite acessar este repositório. Conecte-o novamente.',403);
+    await env.DB.prepare('INSERT OR REPLACE INTO github_connections(user_id,owner,repo,repository_url,github_user,token_cipher,updated_at) VALUES(?,?,?,?,?,?,?)').bind(userId,row.owner,row.repo,row.repository_url,row.github_user,await encryptSecret(token,env),Date.now()).run();return json({connected:true,repository:row.repository,repositoryUrl:row.repository_url,githubUser:row.github_user});
+  }
   if (path === "/api/github/options" && method === "GET") return json(await githubOptions(env, userId));
   if (path === "/api/github/disconnect" && method === "POST") {
-    await env.DB.batch([env.DB.prepare("DELETE FROM github_connections WHERE user_id=?").bind(userId), env.DB.prepare("DELETE FROM github_identities WHERE user_id=?").bind(userId)]);
+    await env.DB.prepare("DELETE FROM github_connections WHERE user_id=?").bind(userId).run();
     return json({ connected: false });
   }
   if (path === "/api/github/issues" && method === "POST") {
@@ -530,6 +539,7 @@ async function route(request, env) {
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(['/public/github-actions-ui.js','/public/repositories-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;

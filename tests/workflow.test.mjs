@@ -12,6 +12,7 @@ import { quotaSummary, measuredAiUsage } from '../daily-usage.mjs';
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from '../issue-recovery.mjs';
 import { historyStatusTargets, refreshIssueStates } from '../history-status.mjs';
 import { readEditableIssue, updateExistingIssue, revisedMemoryContent } from '../issue-editor.mjs';
+import { labelsRevision, setIssueLabels, projectSelections, addIssueProjects, listIssueComments, sendIssueComment } from '../github-issue-actions.mjs';
 
 test('cotas calculam saldo, renovação e não inventam tokens ausentes',()=>{
   const now=Date.parse('2026-10-10T23:00:00Z');
@@ -51,7 +52,7 @@ test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns'
 
 test('rascunhos são isolados por conta, persistem anexos e impedem edição com revisão antiga',async()=>{
   const db=new DatabaseSync(':memory:');
-  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql','0006_issue_operations.sql','0007_daily_issue_count.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql','0006_issue_operations.sql','0007_daily_issue_count.sql','0008_saved_repositories.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
   for(const id of ['alice','bob']){
     db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?,?,?)').run(id,id,id,'user',1,Date.now(),'salt','hash');
     db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(id).digest('hex'),id,Date.now()+60000);
@@ -96,6 +97,9 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   for(const user of ['alice','bob'])db.prepare('INSERT INTO github_connections VALUES(?,?,?,?,?,?,?)').run(user,'owner','repo','https://github.com/owner/repo','',tokenCipher,Date.now());
   const bobEntry={...entry,number:43,url:'https://github.com/owner/repo/issues/43'};await request('/api/history','POST',{issues:[bobEntry]},'bob');
   const originalFetch=globalThis.fetch;let apiCalls=0;
+  db.prepare('INSERT INTO saved_repositories SELECT user_id,lower(owner||\'/\'||repo),owner,repo,repository_url,github_user,token_cipher,updated_at FROM github_connections WHERE user_id=\'alice\'').run();
+  const savedRepos=(await request('/api/github/repositories')).data.repositories;assert.equal(savedRepos.length,1);assert.equal(savedRepos[0].repository,'owner/repo');assert.equal(savedRepos[0].token_cipher,undefined);assert.equal((await request('/api/github/repositories','GET',undefined,'bob')).data.repositories.length,0);
+  assert.equal((await request('/api/github/switch','POST',{repository:'owner/repo'},'bob')).status,404);
   try{
     globalThis.fetch=async(url,options)=>{apiCalls++;assert.equal(new URL(url).pathname,'/repos/owner/repo/issues/42');assert.equal(options.headers.Authorization,'Bearer test-token');return Response.json({number:42,state:'closed'})};
     assert.equal((await request('/api/history/statuses','POST',{issues:[bobEntry]})).data.updated,0);assert.equal(apiCalls,0);
@@ -110,6 +114,7 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
     globalThis.fetch=async()=>Response.json({number:42,title:'Título atual',body:'Conteúdo atual',state:'closed',labels:[{name:'melhoria'}]});
     const editPath='/api/history/issue?repository=owner%2Frepo&number=42';
     assert.equal((await request(editPath,'GET',undefined,'bob')).status,404);
+    for(const action of ['labels','comments','projects'])assert.equal((await request('/api/history/'+action+'?repository=owner%2Frepo&number=42',action==='projects'?'POST':'GET',action==='projects'?{projects:[]}:undefined,'bob')).status,404);
     const editable=(await request(editPath)).data.issue;assert.equal(editable.body,'Conteúdo atual');let patches=0;
     globalThis.fetch=async(url,options)=>{if(options.method==='PATCH'){patches++;const patch=JSON.parse(options.body);assert.deepEqual(Object.keys(patch).sort(),['body','title']);return Response.json({number:42,title:patch.title,body:patch.body,state:'closed'})}return Response.json({number:42,title:'Título atual',body:'Conteúdo atual',state:'closed',labels:[{name:'melhoria'}]})};
     assert.equal((await request(editPath,'PATCH',{title:'Título revisado',body:'Conteúdo revisado',revision:editable.revision})).status,200);assert.equal(patches,1);
@@ -128,6 +133,9 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   const memoryPath='/api/memory/entry?repository=owner%2Frepo&number=2';
   assert.equal((await request('/api/memory/entries')).data.entries.length,2);
   assert.equal((await request('/api/memory/entries','GET',undefined,'bob')).data.entries.length,1);
+  assert.equal((await request('/api/memory/entries?q=somente')).data.entries.length,1);
+  assert.equal((await request('/api/memory/entries?q=somente','GET',undefined,'bob')).data.entries.length,0);
+  assert.equal((await request('/api/memory/entries?q=%25')).data.entries.length,0);
   assert.equal((await request(memoryPath,'GET',undefined,'bob')).status,404);
   assert.equal((await request(memoryPath,'DELETE',undefined,'bob')).status,404);
   assert.equal((await request(memoryPath)).data.entry.content,'Conteúdo antigo somente de Alice');
@@ -168,7 +176,22 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   const first=recoverableIssue(concurrent,'owner/repo',store,async payload=>{concurrentPosts++;entered();await gate;await payload._onCreated(result);return result},async()=>null);
   await started;await assert.rejects(()=>recoverableIssue(concurrent,'owner/repo',store,async()=>{concurrentPosts++},async()=>null),e=>e.status===409);release();await first;assert.equal(concurrentPosts,1);
   assert.equal(await d1OperationStore(env.DB,'bob').read(body.requestId),null);
+  const commentEntry={repository:'owner/repo',number:42},commentBody={body:'Comentário novo',requestId:crypto.randomUUID()};let commentPosts=0;
+  const commentApi=async(path,token,init)=>{commentPosts++;assert.equal(init.method,'POST');const value=JSON.parse(init.body).body;return Response.json({id:1,body:value,html_url:'https://github.com/owner/repo/issues/42#issuecomment-1',user:{login:'alice'},created_at:new Date().toISOString()})};
+  const posted=await sendIssueComment(commentEntry,{owner:'owner',repo:'repo',token:'test'},commentBody,commentApi,store);assert.equal(posted.body,'Comentário novo');await sendIssueComment(commentEntry,{owner:'owner',repo:'repo',token:'test'},commentBody,commentApi,store);assert.equal(commentPosts,1);
   db.close();
+});
+
+test('labels são substituídas somente após verificar a revisão e projetos reportam resultados individuais',async()=>{
+  const entry={repository:'o/r',number:42},connection={owner:'o',repo:'r',token:'test'},revision=await labelsRevision(['bug']);let puts=0;
+  const api=async(path,token,init)=>{if(init.method==='PUT'){puts++;assert.deepEqual(JSON.parse(init.body),{labels:[]});return Response.json([])}return Response.json({number:42,title:'Teste',body:'Texto',state:'open',labels:[{name:'bug'}]})};
+  assert.deepEqual((await setIssueLabels(entry,connection,{labels:[],labelsRevision:revision},api,{labels:[{name:'bug'}]})).labels,[]);assert.equal(puts,1);
+  await assert.rejects(()=>setIssueLabels(entry,connection,{labels:['melhoria'],labelsRevision:'outdated'},api,{labels:[{name:'melhoria'}]}),error=>error.status===409);assert.equal(puts,1);
+  assert.throws(()=>projectSelections({projects:[{id:'one'},{id:'one'}]}));assert.throws(()=>projectSelections({projects:Array.from({length:6},(_,i)=>({id:String(i)}))}));
+  const options={projects:[{id:'one',title:'Primeiro',singleSelectFields:[]},{id:'two',title:'Segundo',singleSelectFields:[]}]};let calls=0;
+  const results=await addIssueProjects(connection,'ISSUE42',{projects:[{id:'one'},{id:'two'}]},options,async(c,q,v)=>{calls++;if(v.projectId==='two')throw new Error('Sem acesso');return {addProjectV2ItemById:{item:{id:'item'}}}});
+  assert.equal(calls,2);assert.equal(results[0].error,undefined);assert.equal(results[1].error,'Sem acesso');
+  const comments=await listIssueComments(entry,connection,async()=>Response.json([{id:1,body:'Texto\n<!-- automatizador-comment:abc-def -->',user:{login:'alice'}}]));assert.equal(comments.comments[0].body,'Texto');
 });
 
 test('recuperação procura o marcador no GitHub sem criar outra issue',async()=>{

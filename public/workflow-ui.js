@@ -38,7 +38,7 @@ window.setupIssueWorkflow=function(config){
     checkbox.type='checkbox';ack.append(checkbox,document.createTextNode('Revisei o aviso e quero criar uma nova issue.'));ack.hidden=true;send.disabled=true;back.type=send.type='button';header.append(label,titleNode,meta);renderBody(content,body);similar.append(similarTitle,similarStatus,matches,ack);footer.append(back,send);dialog.append(header,content,similar,footer);document.body.append(dialog);dialog.showModal();
     checkbox.addEventListener('change',()=>send.disabled=!checkbox.checked);
     const answer=new Promise(resolve=>{let done=false;const finish=value=>{if(done)return;done=true;dialog.close();dialog.remove();resolve(value)};back.addEventListener('click',()=>finish(false));send.addEventListener('click',()=>finish(true));dialog.addEventListener('cancel',event=>{event.preventDefault();finish(false)})});
-    if(editing){label.textContent='Revisar atualização da issue existente';send.textContent='Confirmar atualização';similar.hidden=true;send.disabled=false;return answer}
+    if(editing){label.textContent=editing.label||'Revisar atualização da issue existente';send.textContent=editing.confirm||'Confirmar atualização';similar.hidden=true;send.disabled=false;return answer}
     api('/api/github/similar?title='+encodeURIComponent(title)).then(data=>{
       if(!dialog.isConnected)return;
       if(data.issues.length){similarStatus.textContent='Confira se esta solicitação já está registrada'+(data.limited?' (a pesquisa retornou resultados limitados).':'.');data.issues.forEach(issue=>{const link=el('a','#'+issue.number+' · '+issue.title+' · '+(issue.state==='open'?'aberta':'fechada'));link.href=safeUrl(issue.url)||'#';link.target='_blank';link.rel='noopener noreferrer';const row=el('p');row.append(link);matches.append(row)});ack.hidden=false}
@@ -53,5 +53,5 @@ window.setupIssueWorkflow=function(config){
     cancel.type=submit.type='button';footer.append(cancel,submit);dialog.append(title,label,input,examples,el('p','Somente este campo será alterado. Você pode desfazer depois.','workflow-note'),footer);document.body.append(dialog);dialog.showModal();input.focus();
     return new Promise(resolve=>{let done=false;const finish=value=>{if(done)return;done=true;dialog.close();dialog.remove();resolve(value)};cancel.addEventListener('click',()=>finish(null));submit.addEventListener('click',()=>finish(input.value.trim()));dialog.addEventListener('cancel',event=>{event.preventDefault();finish(null)})});
   }
-  return {review,refine,markDirty(){dirty=true},reset(){active=null;dirty=true;select.value='';message('Novo rascunho. Use Salvar na conta quando quiser mantê-lo.')}};
+  return {review,refine,renderBody,markDirty(){dirty=true},reset(){active=null;dirty=true;select.value='';message('Novo rascunho. Use Salvar na conta quando quiser mantê-lo.')}};
 };
