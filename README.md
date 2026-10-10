@@ -111,3 +111,13 @@ Ao clicar em **Refazer este campo com IA**, informe opcionalmente como melhorar 
 As novas issues criadas pela ferramenta são registradas automaticamente no histórico da conta. Acesse em outro dispositivo e use **Atualizar histórico** para consultar as últimas 500 issues registradas. As pesquisas por título/número, repositório e datas continuam disponíveis. **Importar histórico deste navegador** permite trazer registros antigos locais para a conta; a importação preserva datas e não duplica uma mesma issue. **Limpar** apaga o histórico da conta em todos os dispositivos, sem apagar as issues no GitHub.
 
 Antes de publicar esta versão, aplique `npx.cmd wrangler d1 migrations apply automatizador-db --remote` para criar `issue_history`. No servidor local, o histórico da conta fica em `data/issue-history.json`, ignorado pelo Git. Se a gravação do histórico falhar após criar uma issue, o usuário recebe um aviso e pode importar a cópia local; a issue não deve ser criada novamente.
+
+## Memória automática por conta
+
+Após criar uma issue, a ferramenta guarda o relato e o conteúdo revisado enviado ao GitHub em uma memória própria da conta autenticada. Não depende do usuário escolher uma issue anterior. Ao gerar ou refazer um campo, consulta somente memórias desse usuário; quando há repositório conectado, usa somente referências dele. A busca seleciona até três conteúdos relacionados entre as 250 memórias mais recentes, com contexto limitado para a IA. Uma geração pode não usar memória se não encontrar relação suficiente.
+
+O relato atual tem prioridade. Referências antigas podem conter hipóteses ou regras desatualizadas e não são tratadas como instruções nem como prova de que uma melhoria foi implementada. A interface indica quais referências foram usadas. Imagens e vídeos não são analisados por esse mecanismo: a memória guarda o texto e as referências de anexos.
+
+**Apagar memória da minha conta** remove somente a memória da conta conectada, preservando issues, histórico, rascunhos e outras contas. A memória começa com as novas issues criadas após esta atualização; o histórico antigo, que guarda apenas metadados, não é usado para reconstruir conteúdo automaticamente. Se a gravação falhar depois de criar uma issue, a ferramenta mostra um aviso, sem induzir uma nova criação.
+
+Cloudflare: aplique a migração `0004_account_memory.sql` antes de publicar. No modo local, o conteúdo fica em `data/account-memory.json`, ignorado pelo Git. Conteúdo relevante recuperado da memória é enviado ao provedor de IA configurado junto ao relato atual; isso não treina o modelo.

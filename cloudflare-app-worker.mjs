@@ -1,3 +1,4 @@
+import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
@@ -265,7 +266,7 @@ function guidance(preference) {
   if (preference === "requisito") return "Modelo de melhoria: priorize fluxo atual, necessidade, comportamento desejado e resultado esperado; trate a solução como sugestão.";
   return "Modelo automático: classifique como bug se uma função existente falha; como requisito se for melhoria ou nova capacidade.";
 }
-async function generateDraft(env, body) {
+async function generateDraft(env, body, userId) {
   const raw = clean(body.raw);
   if (raw.length < 10) throw fail("Descreva a solicitação com um pouco mais de detalhe.");
   if (raw.length > 20_000) throw fail("A descrição deve ter no máximo 20.000 caracteres.");
@@ -276,7 +277,8 @@ async function generateDraft(env, body) {
     data_de_hoje: new Date().toISOString().slice(0, 10), tipo_solicitacao: preference || "automático",
     orientacao_do_modelo: guidance(preference), opcoes_motivacao: MOTIVATION, opcoes_urgencia: URGENCY
   };
-  const systemPrompt = DRAFT_SYSTEM_PROMPT + fieldRefinementInstruction(body,SCHEMA.properties);
+  let memories=[];if(userId){const connection=await env.DB.prepare("SELECT owner,repo FROM github_connections WHERE user_id=?").bind(userId).first();const {results}=await env.DB.prepare("SELECT repository,number,title,content,created_at FROM account_memory WHERE user_id=? ORDER BY created_at DESC LIMIT 250").bind(userId).all();memories=selectAccountMemory(raw+" "+(body.current?.title||""),results,connection?connection.owner+"/"+connection.repo:"")};
+  const systemPrompt = DRAFT_SYSTEM_PROMPT + fieldRefinementInstruction(body,SCHEMA.properties) + memoryInstruction(memories);
   const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: JSON.stringify(userData) }
@@ -306,7 +308,7 @@ async function generateDraft(env, body) {
   if (normalized.motivation !== MOTIVATION[5]) normalized.otherMotivation = "";
   for(const field of ["problem","description","impacts","today","nonimplementation","otherMotivation"])normalized[field]=formatDraftTopics(normalized[field]);
   normalized.title = formatIssueTitle(normalized.title, normalized.classification);
-  return { draft: normalized, model };
+  return { draft: normalized, model, memoryUsed:memorySources(memories) };
 }
 async function oauthCallback(request, env, url) {
   const state = url.searchParams.get("state") || "";
@@ -371,6 +373,8 @@ async function route(request, env) {
   }
   if (path.startsWith("/api/") && !session) throw fail("Faça login para continuar.", 401);
   const userId = session?.user.id;
+  if(path==="/api/memory"&&method==="GET"){const row=await env.DB.prepare("SELECT COUNT(*) AS count FROM account_memory WHERE user_id=?").bind(userId).first();return json({count:row.count})}
+  if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
   if(path==='/api/history'&&method==='POST'){
     const body=await readBody(request,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw fail('Envie até 200 registros.');
@@ -471,10 +475,10 @@ async function route(request, env) {
     return json({ connected: false });
   }
   if (path === "/api/github/issues" && method === "POST") {
-    const result=await createGithubIssue(env,await readBody(request),userId);try{const entry=validateHistoryEntry({...result,createdAt:Date.now()});await env.DB.prepare("INSERT OR REPLACE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)").bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt).run();result.createdAt=entry.createdAt}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return json(result,201);
+    const body=await readBody(request),result=await createGithubIssue(env,body,userId);try{await env.DB.prepare("INSERT OR REPLACE INTO account_memory(user_id,repository,number,title,content,created_at) VALUES(?,?,?,?,?,?)").bind(userId,result.repository.toLowerCase(),result.number,result.title,memoryContent(body),Date.now()).run()}catch(error){result.memoryError="A issue foi criada, mas não foi possível guardar a memória da conta."}try{const entry=validateHistoryEntry({...result,createdAt:Date.now()});await env.DB.prepare("INSERT OR REPLACE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)").bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt).run();result.createdAt=entry.createdAt}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return json(result,201);
   }
   if (path === "/api/status" && method === "GET") return json({ provider: "cloudflare", available: true, model: env.CLOUDFLARE_AI_MODEL || MODEL_DEFAULT, modelInstalled: true });
-  if (path === "/api/draft" && method === "POST") return json(await generateDraft(env, await readBody(request)));
+  if (path === "/api/draft" && method === "POST") return json(await generateDraft(env, await readBody(request),userId));
   if (path.startsWith("/api/")) throw fail("Rota não encontrada.", 404);
   if(path==="/public/workflow-ui.js" && ["GET","HEAD"].includes(method))return env.ASSETS.fetch(new Request(new URL("/workflow-ui.js",request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {

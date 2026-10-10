@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import worker from '../cloudflare-app-worker.mjs';
 import { validateSavedDraft, rankSimilarIssues, findSimilarIssues, fieldRefinementInstruction } from '../issue-workflow.mjs';
 import { formatDraftTopics } from '../draft-prompt.mjs';
+import { memoryContent,selectAccountMemory } from '../account-memory.mjs';
 
 test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns',()=>{
   assert.equal(formatDraftTopics('Regras a validar: - Disponibilizar impressão. - Permitir seleção. O objetivo é facilitar o fluxo.'),'Regras a validar:\n• Disponibilizar impressão.\n• Permitir seleção.\n\nO objetivo é facilitar o fluxo.');
@@ -15,7 +16,7 @@ test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns'
 
 test('rascunhos são isolados por conta, persistem anexos e impedem edição com revisão antiga',async()=>{
   const db=new DatabaseSync(':memory:');
-  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
   for(const id of ['alice','bob']){
     db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?,?,?)').run(id,id,id,'user',1,Date.now(),'salt','hash');
     db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(id).digest('hex'),id,Date.now()+60000);
@@ -47,7 +48,21 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   assert.equal((await request('/api/history')).data.issues.length,1);
   assert.equal((await request('/api/history','POST',{issues:[{...entry,url:'https://example.com/issues/42'}]})).status,400);
   assert.equal((await request('/api/history','DELETE')).status,200);
-  assert.equal((await request('/api/history')).data.issues.length,0);db.close();
+  assert.equal((await request('/api/history')).data.issues.length,0);
+  for(const user of ['alice','bob'])db.prepare('INSERT INTO account_memory VALUES(?,?,?,?,?,?)').run(user,'owner/repo',1,'Filtro marcação agendamento','Filtro marcação agendamento. MEMORIA_PRIVADA_'+user,Date.now());
+  let modelInput;env.AI={run:async(model,input)=>{modelInput=input;return {response:{title:'Filtro marcação',description:'Análise atual',classification:'requisito',questions:[]}}}};
+  const generated=await request('/api/draft','POST',{raw:'Filtro marcação agendamento',userId:'bob',memoryUsed:[{reference:'REFERENCIA_INJETADA'}]});
+  assert.equal(generated.status,200);assert.equal(generated.data.memoryUsed.length,1);
+  assert(modelInput.messages[0].content.includes('MEMORIA_PRIVADA_alice'));assert(!modelInput.messages[0].content.includes('MEMORIA_PRIVADA_bob'));assert(!modelInput.messages[0].content.includes('REFERENCIA_INJETADA'));
+  assert.equal((await request('/api/memory','DELETE')).status,200);
+  assert.equal((await request('/api/memory')).data.count,0);assert.equal((await request('/api/memory','GET',undefined,'bob')).data.count,1);
+  const cleared=await request('/api/draft','POST',{raw:'Filtro marcação agendamento'});assert.equal(cleared.data.memoryUsed.length,0);assert(!modelInput.messages[0].content.includes('MEMORIA_PRIVADA_bob'));db.close();
+});
+
+test('memória usa conteúdos relacionados e respeita o repositório',()=>{
+  const entries=[{repository:'o/r',number:1,title:'Filtro agenda marcação',content:memoryContent({raw:'Filtro agenda marcação',body:'Regras funcionais'}),created_at:1},{repository:'outro/repo',number:2,title:'Filtro agenda marcação',content:'Outro projeto',created_at:2}];
+  assert.deepEqual(selectAccountMemory('Filtro agenda marcação',entries,'o/r').map(x=>x.number),[1]);
+  assert.equal(selectAccountMemory('Impressão estoque medicamentos',entries).length,0);
 });
 
 test('orientação de revisão fica limitada ao campo escolhido',()=>{

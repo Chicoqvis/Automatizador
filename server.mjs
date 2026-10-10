@@ -1,3 +1,4 @@
+import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, workflowError, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
@@ -119,7 +120,7 @@ function clean(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-async function generate(body) {
+async function generate(body,userId) {
   const raw = clean(body.raw);
   if (raw.length < 10) throw Object.assign(new Error("Descreva a solicitação com um pouco mais de detalhe."), { status: 400 });
   if (raw.length > 20000) throw Object.assign(new Error("A descrição deve ter no máximo 20.000 caracteres."), { status: 400 });
@@ -153,7 +154,8 @@ async function generate(body) {
     opcoes_motivacao: MOTIVATION,
     opcoes_urgencia: URGENCY
   };
-  const systemPrompt = DRAFT_SYSTEM_PROMPT + fieldRefinementInstruction(body,schema.properties);
+  const connection=userId?githubConnections.get(userId):null;const memories=userId?selectAccountMemory(raw+" "+(body.current?.title||""),localMemory().filter(row=>row.userId===userId),connection?connection.owner+"/"+connection.repo:""):[];
+  const systemPrompt = DRAFT_SYSTEM_PROMPT + fieldRefinementInstruction(body,schema.properties)+memoryInstruction(memories);
   const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: JSON.stringify(userData) }
@@ -217,7 +219,7 @@ async function generate(body) {
   normalized.questions = Array.isArray(draft.questions) ? draft.questions.slice(0, 1).map(clean).filter(Boolean) : [];
   for(const field of ["problem","description","impacts","today","nonimplementation","otherMotivation"])normalized[field]=formatDraftTopics(normalized[field]);
   normalized.title = formatIssueTitle(normalized.title, normalized.classification);
-  return { draft: normalized, model: aiModel() };
+  return { draft: normalized, model: aiModel(),memoryUsed:memorySources(memories) };
 }
 
 const draftJobs = new Map();
@@ -542,6 +544,9 @@ async function createGithubIssue(body, userId) {
   }
   return result;
 }
+function localMemory(){const file=path.join(DATA_DIR,'account-memory.json');return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]}
+function persistLocalMemory(rows){fs.mkdirSync(DATA_DIR,{recursive:true});const file=path.join(DATA_DIR,'account-memory.json');fs.writeFileSync(file+'.tmp',JSON.stringify(rows));fs.renameSync(file+'.tmp',file)}
+function saveLocalMemory(userId,result,body){const rows=localMemory().filter(row=>!(row.userId===userId&&row.repository===result.repository.toLowerCase()&&row.number===result.number));rows.push({userId,repository:result.repository.toLowerCase(),number:result.number,title:result.title,content:memoryContent(body),created_at:Date.now()});persistLocalMemory(rows)}
 function localHistory(){const file=path.join(DATA_DIR,'issue-history.json');return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]}
 function persistLocalHistory(entries){fs.mkdirSync(DATA_DIR,{recursive:true});const file=path.join(DATA_DIR,'issue-history.json');fs.writeFileSync(file+'.tmp',JSON.stringify(entries));fs.renameSync(file+'.tmp',file)}
 function addLocalHistory(userId,items){const stored=localHistory();for(const item of items){const entry=validateHistoryEntry(item);if(!stored.some(row=>row.userId===userId&&row.entry.repository===entry.repository&&row.entry.number===entry.number))stored.push({userId,entry})}persistLocalHistory(stored)}
@@ -586,6 +591,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname.startsWith("/api/") && !session) return send(res, 401, { error: "Faça login para continuar." });
     const userId = session && session.user.id;
+    if(pathname==="/api/memory"&&method==="GET")return send(res,200,{count:localMemory().filter(row=>row.userId===userId).length});
+    if(pathname==="/api/memory"&&method==="DELETE"){persistLocalMemory(localMemory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
     if(pathname==='/api/history'&&method==='GET')return send(res,200,{issues:localHistory().filter(row=>row.userId===userId).map(row=>row.entry).sort((a,b)=>b.createdAt-a.createdAt).slice(0,500)});
     if(pathname==='/api/history'&&method==='POST'){const body=await readBody(req,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw workflowError('Envie até 200 registros.');addLocalHistory(userId,body.issues);return send(res,200,{ok:true})}
     if(pathname==='/api/history'&&method==='DELETE'){persistLocalHistory(localHistory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
@@ -673,7 +680,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === "/api/github/connect" && method === "POST") return send(res, 200, await connectGithub(await readBody(req), userId));
     if (pathname === "/api/github/options" && method === "GET") return send(res, 200, await githubOptions(userId));
     if (pathname === "/api/github/disconnect" && method === "POST") { githubConnections.delete(userId); githubOAuthIdentities.delete(userId); return send(res, 200, { connected: false }); }
-    if (pathname === "/api/github/issues" && method === "POST") {const result=await createGithubIssue(await readBody(req),userId);try{result.createdAt=Date.now();addLocalHistory(userId,[result])}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return send(res,201,result)}
+    if (pathname === "/api/github/issues" && method === "POST") {const body=await readBody(req),result=await createGithubIssue(body,userId);try{saveLocalMemory(userId,result,body)}catch(error){result.memoryError="A issue foi criada, mas não foi possível guardar a memória da conta."}try{result.createdAt=Date.now();addLocalHistory(userId,[result])}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return send(res,201,result)}
     if (pathname === "/api/status" && method === "GET") {
       return send(res, 200, await aiStatus());
     }
@@ -681,7 +688,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req); const id = randomUUID();
       const job = { userId, status: "pending", createdAt: Date.now(), result: null, error: null }; draftJobs.set(id, job);
       for (const [jobId, oldJob] of draftJobs) if (Date.now() - oldJob.createdAt > 10 * 60 * 1000) draftJobs.delete(jobId);
-      generate(body).then((result) => { job.status = "done"; job.result = result; }).catch((error) => { job.status = "error"; job.error = error.message || "Não foi possível falar com a IA local."; job.errorStatus = error.status || 503; });
+      generate(body,userId).then((result) => { job.status = "done"; job.result = result; }).catch((error) => { job.status = "error"; job.error = error.message || "Não foi possível falar com a IA local."; job.errorStatus = error.status || 503; });
       return send(res, 202, { jobId: id, status: "pending" });
     }
     const draftJobMatch = pathname.match(/^\/api\/draft\/jobs\/([0-9a-f-]+)$/i);
@@ -697,7 +704,7 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (fileName !== "/index.html") { res.writeHead(404); return res.end("Não encontrado."); }
+    if (fileName !== "/index.html" && fileName!=="/public/workflow-ui.js") { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {
