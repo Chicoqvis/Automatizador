@@ -1,6 +1,6 @@
 import { validateSavedDraft, findSimilarIssues, workflowError } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
-import { DRAFT_SYSTEM_PROMPT, formatIssueTitle } from "./draft-prompt.mjs";
+import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -215,6 +215,7 @@ async function generate(body) {
     if (!normalized.otherMotivation || genericOnly.test(normalized.otherMotivation)) normalized.otherMotivation = fallbackText.otherMotivation;
   } else normalized.otherMotivation = "";
   normalized.questions = Array.isArray(draft.questions) ? draft.questions.slice(0, 1).map(clean).filter(Boolean) : [];
+  for(const field of ["problem","description","impacts","today","nonimplementation","otherMotivation"])normalized[field]=formatDraftTopics(normalized[field]);
   normalized.title = formatIssueTitle(normalized.title, normalized.classification);
   return { draft: normalized, model: aiModel() };
 }

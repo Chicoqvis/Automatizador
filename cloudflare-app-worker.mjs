@@ -1,6 +1,6 @@
 import { validateSavedDraft, findSimilarIssues } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
-import { DRAFT_SYSTEM_PROMPT, formatIssueTitle } from "./draft-prompt.mjs";
+import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
 const MODEL_DEFAULT = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const SESSION_TTL = 12 * 60 * 60;
 const MAX_BODY = 30_000;
@@ -304,6 +304,7 @@ async function generateDraft(env, body) {
   }
   if (normalized.motivation === MOTIVATION[5] && !normalized.otherMotivation) normalized.otherMotivation = "A motivação específica não foi detalhada no relato.";
   if (normalized.motivation !== MOTIVATION[5]) normalized.otherMotivation = "";
+  for(const field of ["problem","description","impacts","today","nonimplementation","otherMotivation"])normalized[field]=formatDraftTopics(normalized[field]);
   normalized.title = formatIssueTitle(normalized.title, normalized.classification);
   return { draft: normalized, model };
 }

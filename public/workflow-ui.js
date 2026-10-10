@@ -29,7 +29,7 @@ window.setupIssueWorkflow=function(config){
       if(image||htmlImage){container.append(media(image?image[2]:htmlImage[1],'image',image?image[1]:''));listNode=null;continue}
       if(asset){container.append(media(asset[0],'video'));listNode=null;continue}
       if(line.startsWith('## ')){container.append(el('h3',line.slice(3)));listNode=null;continue}
-      if(/^[-*] /.test(line)){if(!listNode){listNode=el('ul');container.append(listNode)}listNode.append(inlineText(el('li'),line.slice(2)));continue}
+      if(/^[-*•] /.test(line)){if(!listNode){listNode=el('ul');container.append(listNode)}listNode.append(inlineText(el('li'),line.slice(2)));continue}
       listNode=null;if(line.trim())container.append(inlineText(el('p'),line));
     }
   }

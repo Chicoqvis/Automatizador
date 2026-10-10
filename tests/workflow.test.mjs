@@ -5,6 +5,13 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import worker from '../cloudflare-app-worker.mjs';
 import { validateSavedDraft, rankSimilarIssues, findSimilarIssues } from '../issue-workflow.mjs';
+import { formatDraftTopics } from '../draft-prompt.mjs';
+
+test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns',()=>{
+  assert.equal(formatDraftTopics('Regras a validar: - Disponibilizar impressão. - Permitir seleção. O objetivo é facilitar o fluxo.'),'Regras a validar:\n• Disponibilizar impressão.\n• Permitir seleção.\n\nO objetivo é facilitar o fluxo.');
+  assert.equal(formatDraftTopics('- Primeiro\n- Segundo'),'• Primeiro\n• Segundo');
+  assert.equal(formatDraftTopics('Usar o cadastro - quando disponível - sem alterar o fluxo.'),'Usar o cadastro - quando disponível - sem alterar o fluxo.');
+});
 
 test('rascunhos são isolados por conta, persistem anexos e impedem edição com revisão antiga',async()=>{
   const db=new DatabaseSync(':memory:');

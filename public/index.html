@@ -467,7 +467,7 @@ $("createIssue").addEventListener("click",function(){
   submitIssue($("title").value.trim(),markdown(),$("createIssue"),"Criar a issue completa?");
 });
 function markdown(){
-  function value(id){return ($(id).value.trim()||"—")+(fieldAttachments[id]&&fieldAttachments[id].length?"\n\n"+fieldAttachments[id].map(function(item){return item.markdown}).join("\n\n"):"")}
+  function value(id){return ($(id).value.trim().replace(/^([\t ]*)•[\t ]+/gm,"$1- ")||"—")+(fieldAttachments[id]&&fieldAttachments[id].length?"\n\n"+fieldAttachments[id].map(function(item){return item.markdown}).join("\n\n"):"")}
   return ["## Solicitante\n"+value("requester"),"## Data\n"+value("date"),"## Unidades impactadas\n"+value("units"),"## É geral, ou pontual\n"+value("frequency"),"## Qual problema essa solicitação resolve?\n"+value("problem"),"## Descrição da Solicitação\n"+value("description"),"## Outros módulos/relatórios afetados\n"+value("impacts"),"## Como está sendo feito hoje\n"+value("today"),"## Impacto da Não Implementação\n"+value("nonimplementation"),"## Motivação da Solicitação\n"+value("motivation"),"## Outra Motivação\n"+value("otherMotivation"),"## Urgência\n"+value("urgency")].join("\n\n")
 }
 $("copy").addEventListener("click",async function(){
@@ -503,7 +503,7 @@ const workflow=window.setupIssueWorkflow({
     if(snapshot.repository&&!sameRepo)toast('Rascunho aberto. Conecte o repositório '+snapshot.repository+' e revise labels/projeto antes de enviar.');
   }
 });
-generated.forEach(function(id){
+generated.filter(function(id){return !["urgency","motivation","requester","units"].includes(id)}).forEach(function(id){
   const field=$(id),button=document.createElement('button');button.type='button';button.className='btn soft refine-field';button.dataset.refineField=id;button.textContent='Refazer este campo com IA';button.addEventListener('click',function(){if($('organize').disabled)return;if(field.value.trim()&&!confirm('Refazer somente '+names[id]+'? Os demais campos e anexos serão mantidos.'))return;runDraft(false,id)});field.after(button);
 });
 })();});
