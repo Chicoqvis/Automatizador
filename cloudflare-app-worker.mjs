@@ -2,6 +2,7 @@ import { dailyAiQuotaError } from "./ai-quota.mjs";
 import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mjs';
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
 import { historyStatusTargets, refreshIssueStates } from './history-status.mjs';
+import { issueReference, readEditableIssue, updateExistingIssue, revisedMemoryContent } from './issue-editor.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
@@ -240,6 +241,7 @@ async function createGithubIssue(env, body, userId) {
   });
   if (!response.ok) throw Object.assign(fail(await githubError(response), response.status === 401 || response.status === 403 || response.status === 404 ? response.status : 502),{creationRejected:response.status>=400&&response.status<500});
   const issue = await response.json();
+  if(env.usage)env.usage.issuesCreated++;
   const result = { number: issue.number, title: issue.title, url: issue.html_url, repository: connection.owner + "/" + connection.repo, labels: (issue.labels || []).map((label) => label.name) };
   result.issueState=issue.state==='closed'?'closed':'open';result.stateCheckedAt=Date.now();
   if(typeof body._onCreated==='function')await body._onCreated(result);
@@ -291,7 +293,8 @@ async function generateDraft(env, body, userId) {
   ];
   const model = env.CLOUDFLARE_AI_MODEL || MODEL_DEFAULT;
   let result;
-  try { result = await env.AI.run(model, { messages, temperature: 0, max_tokens: 2600, response_format: { type: "json_schema", json_schema: SCHEMA } }); if(env.usage){const measured=measuredAiUsage(result,model);env.usage.aiCalls++;env.usage.neurons+=measured.neurons||0;env.usage.aiUnknown+=measured.aiUnknown||0} }
+  if(env.usage)env.usage.aiCalls++;
+  try { result = await env.AI.run(model, { messages, temperature: 0, max_tokens: 2600, response_format: { type: "json_schema", json_schema: SCHEMA } }); if(env.usage){const measured=measuredAiUsage(result,model);env.usage.neurons+=measured.neurons||0;env.usage.aiUnknown+=measured.aiUnknown||0} }
   catch (error) { const quota=dailyAiQuotaError(error);if(quota&&env.usage)env.usage.aiExhausted=1;else if(env.usage)env.usage.aiUnknown++;throw quota || fail(error.message || "Falha ao gerar o rascunho no Workers AI.", 502); }
   let draft = result?.response ?? result?.output_text;
   if (typeof draft === "string") {
@@ -399,6 +402,19 @@ async function route(request, env) {
   }
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
+  if(path==='/api/history/issue'&&['GET','PATCH'].includes(method)){
+    const ref=issueReference(url.searchParams),row=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).first();
+    if(!row)throw fail('Issue não encontrada no histórico da sua conta.',404);
+    const connection=await githubConnection(env,userId);
+    if(method==='GET')return json({issue:await readEditableIssue(ref,connection,githubApi)});
+    const issue=await updateExistingIssue(ref,connection,await readBody(request,110000),githubApi);let warning='';
+    try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.title',?,'$.issueState',?,'$.stateCheckedAt',?,'$.stateCheckError','') WHERE user_id=? AND repository=? AND number=?").bind(issue.title,issue.issueState,issue.stateCheckedAt,userId,ref.repository,ref.number).run();const memory=await env.DB.prepare('SELECT content FROM account_memory WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).first();if(memory)await env.DB.prepare('UPDATE account_memory SET title=?,content=? WHERE user_id=? AND repository=? AND number=?').bind(issue.title,revisedMemoryContent(memory.content,issue.body),userId,ref.repository,ref.number).run()}catch{warning='A issue foi atualizada no GitHub, mas não foi possível atualizar todas as informações salvas na ferramenta.'}
+    return json({issue,warning});
+  }
+  if(path==='/api/admin/usage'&&method==='GET'){
+    if(session.user.role!=='admin')throw fail('Somente administradores podem consultar o resumo de uso.',403);
+    const since=new Date(Date.now()-13*86400000).toISOString().slice(0,10),{results}=await env.DB.prepare('SELECT day,issues_created,ai_calls,requests FROM daily_usage WHERE day>=? ORDER BY day DESC').bind(since).all();return json({days:results});
+  }
   if(path==='/api/history/statuses'&&method==='POST'){
     const body=await readBody(request),{results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();
     const entries=historyStatusTargets(body,results.map(row=>JSON.parse(row.entry)));
@@ -513,6 +529,7 @@ async function route(request, env) {
   if(path==="/public/workflow-ui.js" && ["GET","HEAD"].includes(method))return env.ASSETS.fetch(new Request(new URL("/workflow-ui.js",request.url),{method,headers:request.headers}));
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
+  if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;

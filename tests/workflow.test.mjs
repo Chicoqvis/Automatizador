@@ -11,6 +11,7 @@ import { dailyAiQuotaError } from '../ai-quota.mjs';
 import { quotaSummary, measuredAiUsage } from '../daily-usage.mjs';
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from '../issue-recovery.mjs';
 import { historyStatusTargets, refreshIssueStates } from '../history-status.mjs';
+import { readEditableIssue, updateExistingIssue, revisedMemoryContent } from '../issue-editor.mjs';
 
 test('cotas calculam saldo, renovação e não inventam tokens ausentes',()=>{
   const now=Date.parse('2026-10-10T23:00:00Z');
@@ -50,7 +51,7 @@ test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns'
 
 test('rascunhos são isolados por conta, persistem anexos e impedem edição com revisão antiga',async()=>{
   const db=new DatabaseSync(':memory:');
-  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql','0006_issue_operations.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql','0006_issue_operations.sql','0007_daily_issue_count.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
   for(const id of ['alice','bob']){
     db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?,?,?)').run(id,id,id,'user',1,Date.now(),'salt','hash');
     db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(id).digest('hex'),id,Date.now()+60000);
@@ -62,9 +63,11 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
     return {status:response.status,data:await response.json()};
   }
   assert.equal((await request('/api/admin/quotas')).status,403);
+  assert.equal((await request('/api/admin/usage')).status,403);
   assert.equal((await request('/api/admin/quotas','GET',undefined,'unknown')).status,401);
   db.prepare("UPDATE users SET role='admin' WHERE id='alice'").run();
   const quotaData=await request('/api/admin/quotas');assert.equal(quotaData.status,200);assert.equal(quotaData.data.quotas.length,4);assert(quotaData.data.quotas[1].used>=2);
+  assert.equal((await request('/api/admin/usage')).status,200);
   const snapshot={description:'Proposta funcional',raw:'Relato de teste',labels:['bug'],attachments:{description:[{name:'print.png',url:'https://github.com/user-attachments/assets/abcd-1234',type:'image/png',markdown:'conteúdo adulterado'}]}};
   const created=await request('/api/drafts','POST',{name:'Meu rascunho',snapshot});assert.equal(created.status,200);const {id,revision}=created.data.draft;
   assert.equal((await request('/api/drafts',undefined,undefined,'bob')).data.drafts.length,0);
@@ -104,6 +107,19 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
     const retained=(await request('/api/history')).data.issues[0];assert.equal(retained.issueState,'closed');assert.equal(retained.stateCheckedAt,closed.stateCheckedAt);assert.match(retained.stateCheckError,/não encontrada/);
     globalThis.fetch=async()=>Response.json({number:42,state:'open'});await request('/api/history/statuses','POST',{issues:[entry]});assert.equal((await request('/api/history')).data.issues[0].issueState,'open');
     assert.equal((await request('/api/history/statuses','POST',{issues:Array(26).fill(entry)})).status,400);
+    globalThis.fetch=async()=>Response.json({number:42,title:'Título atual',body:'Conteúdo atual',state:'closed',labels:[{name:'melhoria'}]});
+    const editPath='/api/history/issue?repository=owner%2Frepo&number=42';
+    assert.equal((await request(editPath,'GET',undefined,'bob')).status,404);
+    const editable=(await request(editPath)).data.issue;assert.equal(editable.body,'Conteúdo atual');let patches=0;
+    globalThis.fetch=async(url,options)=>{if(options.method==='PATCH'){patches++;const patch=JSON.parse(options.body);assert.deepEqual(Object.keys(patch).sort(),['body','title']);return Response.json({number:42,title:patch.title,body:patch.body,state:'closed'})}return Response.json({number:42,title:'Título atual',body:'Conteúdo atual',state:'closed',labels:[{name:'melhoria'}]})};
+    assert.equal((await request(editPath,'PATCH',{title:'Título revisado',body:'Conteúdo revisado',revision:editable.revision})).status,200);assert.equal(patches,1);
+    const saved=(await request('/api/history')).data.issues[0];assert.equal(saved.title,'Título revisado');assert.equal(saved.issueState,'closed');
+    globalThis.fetch=async()=>Response.json({number:42,title:'Alteração de outra pessoa',body:'Outro texto',state:'open'});
+    assert.equal((await request(editPath,'PATCH',{title:'Tentativa',body:'Meu texto',revision:editable.revision})).status,409);
+    let createPosts=0;globalThis.fetch=async()=>{createPosts++;return Response.json({number:44,title:'Nova issue',state:'open',labels:[],html_url:'https://github.com/owner/repo/issues/44'})};
+    const createBody={requestId:crypto.randomUUID(),expectedRepository:'owner/repo',title:'Nova issue',body:'Texto',labels:[]};
+    assert.equal((await request('/api/github/issues','POST',createBody)).status,201);assert.equal((await request('/api/github/issues','POST',createBody)).status,201);assert.equal(createPosts,1);
+    assert.equal((await request('/api/admin/usage')).data.days[0].issues_created,1);db.prepare("DELETE FROM account_memory WHERE user_id='alice' AND number=44").run();
   }finally{globalThis.fetch=originalFetch;db.prepare('DELETE FROM github_connections').run();await request('/api/history','DELETE',undefined,'bob')}
   assert.equal((await request('/api/history','DELETE')).status,200);
   assert.equal((await request('/api/history')).data.issues.length,0);
@@ -131,6 +147,7 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   assert.equal(limited.status,429);assert.equal(limited.data.code,'AI_DAILY_QUOTA_EXCEEDED');assert(limited.data.retryAfter>0);assert.match(limited.data.error,/Seu texto foi preservado/);
   env.AI.run=async()=>{throw new Error('3040: Capacity temporarily exceeded')};
   const unavailable=await request('/api/draft','POST',{raw:'Filtro marcação agendamento'});assert.equal(unavailable.status,502);assert.equal(unavailable.data.code,undefined);
+  assert.equal((await request('/api/admin/usage')).data.days[0].ai_calls,4);
   const body={requestId:crypto.randomUUID(),expectedRepository:'owner/repo',title:'Título',body:'Descrição',raw:'Relato',labels:['melhoria'],projectId:'',statusFieldId:'',statusOptionId:''};
   const store=d1OperationStore(env.DB,'alice');let posts=0;
   const result={number:99,title:body.title,url:'https://github.com/owner/repo/issues/99',repository:'owner/repo',labels:['melhoria']};
@@ -168,6 +185,17 @@ test('consulta de status usa somente referências salvas e não muda o status do
   const report=await refreshIssueStates([entry,{...entry,repository:'other/repo'}],{owner:'owner',repo:'repo',token:'test'},async()=>Response.json({number:42,state:'closed'}),500);
   assert.equal(report.updated,1);assert.equal(report.skipped,1);assert.equal(report.entries[0].status,'Em análise');assert.equal(report.entries[0].stateCheckedAt,500);
   const failed=await refreshIssueStates([entry],{owner:'owner',repo:'repo',token:'test'},async()=>Response.json({number:42,state:'closed',pull_request:{}}));assert.equal(failed.failed,1);assert.equal(failed.entries[0].issueState,'open');
+});
+
+test('edição protege mudanças concorrentes e recupera resposta perdida sem outro PATCH',async()=>{
+  const entry={repository:'o/r',number:42},connection={owner:'o',repo:'r',token:'test'};let current={number:42,title:'Original',body:'Texto original',state:'closed',labels:[]},patches=0;
+  const api=async(path,token,options={})=>{if(options.method==='PATCH'){patches++;const body=JSON.parse(options.body);current={...current,...body};return Response.json(current)}return Response.json(current)};
+  const initial=await readEditableIssue(entry,connection,api),payload={title:'Revisado',body:'Texto revisado',revision:initial.revision};
+  const updated=await updateExistingIssue(entry,connection,payload,api);assert.equal(updated.issueState,'closed');assert.equal(patches,1);
+  assert.equal((await updateExistingIssue(entry,connection,payload,api)).recovered,true);assert.equal(patches,1);
+  current.body='Outra alteração';await assert.rejects(()=>updateExistingIssue(entry,connection,payload,api),error=>error.status===409);assert.equal(patches,1);
+  await assert.rejects(()=>readEditableIssue(entry,{...connection,repo:'outro'},api),error=>error.status===409);
+  assert.equal(revisedMemoryContent('Relato original:\nMinha ideia\n\nIssue revisada e enviada:\nAntiga','Nova'),'Relato original:\nMinha ideia\n\nIssue revisada e enviada:\nNova');
 });
 
 test('memória usa conteúdos relacionados e respeita o repositório',()=>{

@@ -16,7 +16,7 @@ export function measuredAiUsage(result, model) {
 
 export function trackDailyUsage(env, now=Date.now()) {
   const original=env.DB;
-  const totals={reads:0,writes:0,neurons:0,aiCalls:0,aiUnknown:0,aiExhausted:0};
+  const totals={reads:0,writes:0,neurons:0,aiCalls:0,aiUnknown:0,aiExhausted:0,issuesCreated:0};
   function count(result){totals.reads+=result?.meta?.rows_read||0;totals.writes+=result?.meta?.rows_written||0;return result}
   function wrap(statement){return {
     bind(...values){return wrap(statement.bind(...values))},
@@ -28,6 +28,6 @@ export function trackDailyUsage(env, now=Date.now()) {
   const DB={prepare(sql){return wrap(original.prepare(sql))},async batch(statements){return (await original.batch(statements.map(s=>s._statement||s))).map(count)}};
   return {env:{...env,DB,usage:totals},async flush(){
     // Include the counter's own row read/write; the overall totals remain estimates.
-    await original.prepare(`INSERT INTO daily_usage(day,requests,rows_read,rows_written,neurons,ai_calls,ai_unknown,ai_exhausted,started_at) VALUES(?,1,?,?,?,?,?,?,?) ON CONFLICT(day) DO UPDATE SET requests=requests+1,rows_read=rows_read+excluded.rows_read,rows_written=rows_written+excluded.rows_written,neurons=neurons+excluded.neurons,ai_calls=ai_calls+excluded.ai_calls,ai_unknown=ai_unknown+excluded.ai_unknown,ai_exhausted=MAX(ai_exhausted,excluded.ai_exhausted)`).bind(new Date(now).toISOString().slice(0,10),totals.reads+1,totals.writes+1,totals.neurons,totals.aiCalls,totals.aiUnknown,totals.aiExhausted,now).run();
+    await original.prepare(`INSERT INTO daily_usage(day,requests,rows_read,rows_written,neurons,ai_calls,ai_unknown,ai_exhausted,started_at,issues_created) VALUES(?,1,?,?,?,?,?,?,?,?) ON CONFLICT(day) DO UPDATE SET requests=requests+1,rows_read=rows_read+excluded.rows_read,rows_written=rows_written+excluded.rows_written,neurons=neurons+excluded.neurons,ai_calls=ai_calls+excluded.ai_calls,ai_unknown=ai_unknown+excluded.ai_unknown,ai_exhausted=MAX(ai_exhausted,excluded.ai_exhausted),issues_created=issues_created+excluded.issues_created`).bind(new Date(now).toISOString().slice(0,10),totals.reads+1,totals.writes+1,totals.neurons,totals.aiCalls,totals.aiUnknown,totals.aiExhausted,now,totals.issuesCreated).run();
   }};
 }

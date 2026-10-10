@@ -5,6 +5,7 @@ import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draf
 import { dailyAiQuotaError } from './ai-quota.mjs';
 import { recoverableIssue, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
 import { historyStatusTargets, refreshIssueStates } from './history-status.mjs';
+import { issueReference, readEditableIssue, updateExistingIssue, revisedMemoryContent } from './issue-editor.mjs';
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -620,6 +621,12 @@ const server = http.createServer(async (req, res) => {
     }
     if(pathname==="/api/memory"&&method==="DELETE"){persistLocalMemory(localMemory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
     if(pathname==='/api/history'&&method==='GET')return send(res,200,{issues:localHistory().filter(row=>row.userId===userId).map(row=>row.entry).sort((a,b)=>b.createdAt-a.createdAt).slice(0,500)});
+    if(pathname==='/api/history/issue'&&['GET','PATCH'].includes(method)){
+      const ref=issueReference(url.searchParams),row=localHistory().find(row=>row.userId===userId&&row.entry.repository===ref.repository&&row.entry.number===ref.number);if(!row)return send(res,404,{error:'Issue não encontrada no histórico da sua conta.'});
+      let connection=githubConnections.get(userId);if(connection?.githubUser){await ensureGithubOAuthIdentity(userId);connection=githubConnections.get(userId)}
+      if(method==='GET')return send(res,200,{issue:await readEditableIssue(ref,connection,githubApi)});
+      const issue=await updateExistingIssue(ref,connection,await readBody(req,110000),githubApi);let warning='';try{const stored=localHistory(),current=stored.find(row=>row.userId===userId&&row.entry.repository===ref.repository&&row.entry.number===ref.number);if(current)Object.assign(current.entry,{title:issue.title,issueState:issue.issueState,stateCheckedAt:issue.stateCheckedAt,stateCheckError:''});persistLocalHistory(stored);const memories=localMemory(),memory=memories.find(row=>row.userId===userId&&row.repository===ref.repository&&row.number===ref.number);if(memory){memory.title=issue.title;memory.content=revisedMemoryContent(memory.content,issue.body);persistLocalMemory(memories)}}catch{warning='A issue foi atualizada no GitHub, mas não foi possível atualizar todas as informações salvas na ferramenta.'}return send(res,200,{issue,warning});
+    }
     if(pathname==='/api/history/statuses'&&method==='POST'){
       const body=await readBody(req),entries=historyStatusTargets(body,localHistory().filter(row=>row.userId===userId).map(row=>row.entry).sort((a,b)=>b.createdAt-a.createdAt).slice(0,500));
       let connection=githubConnections.get(userId);if(connection?.githubUser){await ensureGithubOAuthIdentity(userId);connection=githubConnections.get(userId)}
@@ -675,6 +682,7 @@ const server = http.createServer(async (req, res) => {
       if(session.user.role!=='admin')return send(res,403,{error:'Somente administradores podem consultar as cotas.'});
       return send(res,503,{error:'As cotas do Cloudflare estão disponíveis na versão publicada do site.'});
     }
+    if(pathname==='/api/admin/usage'&&method==='GET'){if(session.user.role!=='admin')return send(res,403,{error:'Somente administradores podem consultar o resumo de uso.'});return send(res,503,{error:'O resumo de uso está disponível na versão publicada do site.'})}
     if (pathname === "/api/admin/users" && method === "GET") {
       if (session.user.role !== "admin") return send(res, 403, { error: "Somente administradores podem gerenciar contas." });
       return send(res, 200, { users: users.map(safeUser) });
@@ -741,7 +749,7 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (fileName !== "/index.html" && fileName!=="/public/workflow-ui.js" && fileName!=="/public/quota-ui.js" && fileName!=="/public/memory-ui.js") { res.writeHead(404); return res.end("Não encontrado."); }
+    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {

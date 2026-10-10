@@ -1,0 +1,1 @@
+ALTER TABLE daily_usage ADD COLUMN issues_created INTEGER NOT NULL DEFAULT 0;
