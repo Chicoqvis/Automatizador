@@ -8,6 +8,19 @@ import { validateSavedDraft, rankSimilarIssues, findSimilarIssues, fieldRefineme
 import { formatDraftTopics } from '../draft-prompt.mjs';
 import { memoryContent,selectAccountMemory } from '../account-memory.mjs';
 import { dailyAiQuotaError } from '../ai-quota.mjs';
+import { quotaSummary, measuredAiUsage } from '../daily-usage.mjs';
+
+test('cotas calculam saldo, renovação e não inventam tokens ausentes',()=>{
+  const now=Date.parse('2026-10-10T23:00:00Z');
+  const result=quotaSummary({neurons:1200.2,requests:50,rows_read:10,rows_written:5},now);
+  assert.equal(result.quotas[0].remaining,8799);assert.equal(result.quotas[1].remaining,99950);assert.equal(result.resetAt,now+3600000);
+  assert.equal(quotaSummary({ai_unknown:1},now).quotas[0].remaining,null);
+  assert.equal(quotaSummary({ai_unknown:1,ai_exhausted:1},now).quotas[0].remaining,0);
+  assert.equal(quotaSummary({requests:200000},now).quotas[1].remaining,0);
+  assert.equal(quotaSummary(null,now+3600000).quotas[0].remaining,10000);
+  assert.equal(measuredAiUsage({},'@cf/meta/llama-3.3-70b-instruct-fp8-fast').aiUnknown,1);
+  assert.equal(measuredAiUsage({usage:{prompt_tokens:1000,completion_tokens:1000}},'@cf/meta/llama-3.3-70b-instruct-fp8-fast').neurons,231.473);
+});
 
 test('cota diária calcula a próxima meia-noite UTC sem confundir indisponibilidade',()=>{
   const now=Date.parse('2026-10-10T22:30:00Z');
@@ -28,7 +41,7 @@ test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns'
 
 test('rascunhos são isolados por conta, persistem anexos e impedem edição com revisão antiga',async()=>{
   const db=new DatabaseSync(':memory:');
-  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
   for(const id of ['alice','bob']){
     db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?,?,?)').run(id,id,id,'user',1,Date.now(),'salt','hash');
     db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(id).digest('hex'),id,Date.now()+60000);
@@ -39,6 +52,10 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
     const response=await worker.fetch(new Request('https://test.example'+path,{method,headers:{Cookie:'automacao_session='+account,Origin:'https://test.example','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)}),env);
     return {status:response.status,data:await response.json()};
   }
+  assert.equal((await request('/api/admin/quotas')).status,403);
+  assert.equal((await request('/api/admin/quotas','GET',undefined,'unknown')).status,401);
+  db.prepare("UPDATE users SET role='admin' WHERE id='alice'").run();
+  const quotaData=await request('/api/admin/quotas');assert.equal(quotaData.status,200);assert.equal(quotaData.data.quotas.length,4);assert(quotaData.data.quotas[1].used>=2);
   const snapshot={description:'Proposta funcional',raw:'Relato de teste',labels:['bug'],attachments:{description:[{name:'print.png',url:'https://github.com/user-attachments/assets/abcd-1234',type:'image/png',markdown:'conteúdo adulterado'}]}};
   const created=await request('/api/drafts','POST',{name:'Meu rascunho',snapshot});assert.equal(created.status,200);const {id,revision}=created.data.draft;
   assert.equal((await request('/api/drafts',undefined,undefined,'bob')).data.drafts.length,0);

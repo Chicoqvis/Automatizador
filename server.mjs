@@ -644,6 +644,10 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(302, { "Location": authorize.toString(), "Cache-Control": "no-store" }); return res.end();
     }
 
+    if(pathname==='/api/admin/quotas'&&method==='GET'){
+      if(session.user.role!=='admin')return send(res,403,{error:'Somente administradores podem consultar as cotas.'});
+      return send(res,503,{error:'As cotas do Cloudflare estão disponíveis na versão publicada do site.'});
+    }
     if (pathname === "/api/admin/users" && method === "GET") {
       if (session.user.role !== "admin") return send(res, 403, { error: "Somente administradores podem gerenciar contas." });
       return send(res, 200, { users: users.map(safeUser) });
@@ -710,7 +714,7 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (fileName !== "/index.html" && fileName!=="/public/workflow-ui.js") { res.writeHead(404); return res.end("Não encontrado."); }
+    if (fileName !== "/index.html" && fileName!=="/public/workflow-ui.js" && fileName!=="/public/quota-ui.js") { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {

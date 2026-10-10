@@ -121,3 +121,11 @@ O relato atual tem prioridade. Referências antigas podem conter hipóteses ou r
 **Apagar memória da minha conta** remove somente a memória da conta conectada, preservando issues, histórico, rascunhos e outras contas. A memória começa com as novas issues criadas após esta atualização; o histórico antigo, que guarda apenas metadados, não é usado para reconstruir conteúdo automaticamente. Se a gravação falhar depois de criar uma issue, a ferramenta mostra um aviso, sem induzir uma nova criação.
 
 Cloudflare: aplique a migração `0004_account_memory.sql` antes de publicar. No modo local, o conteúdo fica em `data/account-memory.json`, ignorado pelo Git. Conteúdo relevante recuperado da memória é enviado ao provedor de IA configurado junto ao relato atual; isso não treina o modelo.
+
+## Cotas diárias disponíveis
+
+Apenas administradores podem abrir o painel e consultar `GET /api/admin/quotas`; usuários comuns recebem HTTP 403. Aplique `0005_daily_usage.sql` antes de publicar. Os contadores persistem no D1 e são compartilhados entre todos os usuários do site. O saldo é uma estimativa do plano Free, não uma consulta do saldo global da conta Cloudflare: não inclui consumo anterior à implantação ou de outros projetos, requisições bloqueadas pela plataforma e operações feitas diretamente no painel. A renovação diária ocorre às 00:00 UTC (21h de Brasília). Os contadores são separados pela data UTC de início da requisição.
+
+A IA usa os tokens retornados pelo modelo Llama 3.3 70B e os coeficientes públicos de neurônios para estimar o consumo. Se os tokens não forem retornados ou o modelo não tiver coeficientes conhecidos, mostra saldo indisponível; nunca trata uma chamada desconhecida como gratuita. Uma resposta de cota esgotada confirma saldo zero para o dia. Leituras e gravações do banco usam os metadados das consultas, incluindo uma estimativa da própria gravação do contador. Cada requisição ao Worker grava uma atualização atômica no contador (uma linha), consumindo também a cota do D1. Nenhum relato, memória ou dado pessoal é copiado para esses contadores.
+
+O botão Atualizar cotas consulta os dados sem polling contínuo. O modo local apenas informa que o painel está disponível no site publicado. O armazenamento total de 5 GB não é uma cota diária e não aparece neste painel.

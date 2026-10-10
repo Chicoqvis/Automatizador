@@ -1,4 +1,5 @@
 import { dailyAiQuotaError } from "./ai-quota.mjs";
+import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
@@ -286,8 +287,8 @@ async function generateDraft(env, body, userId) {
   ];
   const model = env.CLOUDFLARE_AI_MODEL || MODEL_DEFAULT;
   let result;
-  try { result = await env.AI.run(model, { messages, temperature: 0, max_tokens: 2600, response_format: { type: "json_schema", json_schema: SCHEMA } }); }
-  catch (error) { throw dailyAiQuotaError(error) || fail(error.message || "Falha ao gerar o rascunho no Workers AI.", 502); }
+  try { result = await env.AI.run(model, { messages, temperature: 0, max_tokens: 2600, response_format: { type: "json_schema", json_schema: SCHEMA } }); if(env.usage){const measured=measuredAiUsage(result,model);env.usage.aiCalls++;env.usage.neurons+=measured.neurons||0;env.usage.aiUnknown+=measured.aiUnknown||0} }
+  catch (error) { const quota=dailyAiQuotaError(error);if(quota&&env.usage)env.usage.aiExhausted=1;else if(env.usage)env.usage.aiUnknown++;throw quota || fail(error.message || "Falha ao gerar o rascunho no Workers AI.", 502); }
   let draft = result?.response ?? result?.output_text;
   if (typeof draft === "string") {
     try { draft = JSON.parse(draft); }
@@ -374,6 +375,11 @@ async function route(request, env) {
   }
   if (path.startsWith("/api/") && !session) throw fail("Faça login para continuar.", 401);
   const userId = session?.user.id;
+  if(path==='/api/admin/quotas'&&method==='GET'){
+    if(session.user.role!=='admin')throw fail('Somente administradores podem consultar as cotas.',403);
+    const row=await env.DB.prepare('SELECT * FROM daily_usage WHERE day=?').bind(new Date().toISOString().slice(0,10)).first();
+    return json(quotaSummary(row));
+  }
   if(path==="/api/memory"&&method==="GET"){const row=await env.DB.prepare("SELECT COUNT(*) AS count FROM account_memory WHERE user_id=?").bind(userId).first();return json({count:row.count})}
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
@@ -482,6 +488,7 @@ async function route(request, env) {
   if (path === "/api/draft" && method === "POST") return json(await generateDraft(env, await readBody(request),userId));
   if (path.startsWith("/api/")) throw fail("Rota não encontrada.", 404);
   if(path==="/public/workflow-ui.js" && ["GET","HEAD"].includes(method))return env.ASSETS.fetch(new Request(new URL("/workflow-ui.js",request.url),{method,headers:request.headers}));
+  if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;
@@ -498,8 +505,10 @@ function constantTimeTextEqual(left, right) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, context) {
+    const tracker=trackDailyUsage(env);env=tracker.env;
     try { return await route(request, env); }
     catch (error) { return json({ error: error.message || "Erro interno do servidor.", ...(error.code === 'AI_DAILY_QUOTA_EXCEEDED' ? { code: error.code, resetAt: error.resetAt, retryAfter: error.retryAfter } : {}) }, error.status || 500); }
+    finally { const saving=tracker.flush().catch(()=>{});if(context?.waitUntil)context.waitUntil(saving);else await saving; }
   }
 };
