@@ -1,3 +1,4 @@
+import {suggestComment} from './comment-ai.mjs';
 import { commentNotifications } from './comment-notifications.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, workflowError, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
@@ -612,10 +613,13 @@ const server = http.createServer(async (req, res) => {
     }
     if(pathname==="/api/memory"&&method==="DELETE"){persistLocalMemory(localMemory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
     if(pathname==='/api/history'&&method==='GET')return send(res,200,{issues:localHistory().filter(row=>row.userId===userId).map(row=>row.entry).sort((a,b)=>b.createdAt-a.createdAt).slice(0,500)});
-    const issueAction=pathname.match(/^\/api\/history\/(labels|comments|projects)$/);
+    const issueAction=pathname.match(/^\/api\/history\/(labels|comments|projects|comment-draft)$/);
     if(issueAction){
       const ref=issueReference(url.searchParams),row=localHistory().find(row=>row.userId===userId&&row.entry.repository===ref.repository&&row.entry.number===ref.number);if(!row)return send(res,404,{error:'Issue não encontrada no histórico da sua conta.'});
       let connection=githubConnections.get(userId);if(connection?.githubUser){await ensureGithubOAuthIdentity(userId);connection=githubConnections.get(userId)}
+      if(issueAction[1]==='comment-draft'&&method==='POST')return send(res,200,await suggestComment(ref,connection,await readBody(req),githubApi,async(messages,schema)=>{
+ const cloud=AI_PROVIDER==='cloudflare';if(cloud&&(!CLOUDFLARE_AI_URL||!CLOUDFLARE_AI_TOKEN))throw workflowError('Configure o acesso ao Workers AI.',503);if(!cloud&&AI_PROVIDER!=='ollama')throw workflowError('Provedor de IA inválido.');const response=await fetch(cloud?CLOUDFLARE_AI_URL+'/v1/draft':OLLAMA_BASE+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json',...(cloud?{Authorization:'Bearer '+CLOUDFLARE_AI_TOKEN}:{})},signal:AbortSignal.timeout(180000),body:JSON.stringify(cloud?{model:aiModel(),messages,schema}:{model:OLLAMA_MODEL,stream:false,think:false,format:schema,messages,options:{temperature:0.2,num_predict:1200,num_ctx:24000}})});if(!response.ok){const detail=await response.text();throw dailyAiQuotaError(detail)||workflowError('Não foi possível gerar a sugestão de comentário.',502)}const result=await response.json();return cloud?result:result.message?.content;
+ }));
       if(issueAction[1]==='labels'&&method==='GET'){const issue=await readEditableIssue(ref,connection,githubApi);return send(res,200,{labels:issue.labels,labelsRevision:await labelsRevision(issue.labels)})}
       if(issueAction[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(req),githubApi,await githubOptions(userId));let warning='';try{const stored=localHistory(),current=stored.find(row=>row.userId===userId&&row.entry.repository===ref.repository&&row.entry.number===ref.number);if(current)current.entry.labels=result.labels;persistLocalHistory(stored)}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return send(res,200,{...result,warning})}
       if(issueAction[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));return send(res,200,{comments:data.comments,hasMore:data.hasMore})}return send(res,201,{comment:await sendIssueComment(ref,connection,await readBody(req),githubApi,localOperationStore(userId))})}

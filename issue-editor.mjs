@@ -7,7 +7,7 @@ export async function readEditableIssue(entry,connection,api){
   if(!response.ok)throw workflowError('Não foi possível abrir a issue no GitHub. Confira o acesso ao repositório.',response.status===404?404:502);
   const issue=await response.json();if(issue.pull_request||issue.number!==entry.number||typeof issue.title!=='string')throw workflowError('O GitHub não retornou a issue esperada.',502);
   const body=typeof issue.body==='string'?issue.body:'';
-  return {repository:entry.repository,number:entry.number,nodeId:issue.node_id,title:issue.title,body,revision:await revision(issue.title,body),issueState:issue.state==='closed'?'closed':'open',stateCheckedAt:Date.now(),labels:(issue.labels||[]).map(x=>typeof x==='string'?x:x.name)};
+  return {repository:entry.repository,number:entry.number,nodeId:issue.node_id,commentsCount:Number(issue.comments)||0,title:issue.title,body,revision:await revision(issue.title,body),issueState:issue.state==='closed'?'closed':'open',stateCheckedAt:Date.now(),labels:(issue.labels||[]).map(x=>typeof x==='string'?x:x.name)};
 }
 export async function updateExistingIssue(entry,connection,body,api){
   const title=typeof body.title==='string'?body.title.trim():'',text=typeof body.body==='string'?body.body:'';

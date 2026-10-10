@@ -1,3 +1,4 @@
+import {suggestComment} from './comment-ai.mjs';
 import { commentNotifications } from './comment-notifications.mjs';
 import { dailyAiQuotaError } from "./ai-quota.mjs";
 import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mjs';
@@ -394,10 +395,13 @@ async function route(request, env) {
   }
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
-  const action=path.match(/^\/api\/history\/(labels|comments|projects)$/);
+  const action=path.match(/^\/api\/history\/(labels|comments|projects|comment-draft)$/);
   if(action){
     const ref=issueReference(url.searchParams),row=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).first();if(!row)throw fail('Issue não encontrada no histórico da sua conta.',404);
     const connection=await githubConnection(env,userId);
+    if(action[1]==='comment-draft'&&method==='POST')return json(await suggestComment(ref,connection,await readBody(request),githubApi,async(messages,schema)=>{
+ const model=env.CLOUDFLARE_AI_MODEL||MODEL_DEFAULT;if(env.usage)env.usage.aiCalls++;try{const result=await env.AI.run(model,{messages,temperature:0.2,max_tokens:1200,response_format:{type:'json_schema',json_schema:schema}});if(env.usage){const measured=measuredAiUsage(result,model);env.usage.neurons+=measured.neurons||0;env.usage.aiUnknown+=measured.aiUnknown||0}return result}catch(error){const quota=dailyAiQuotaError(error);if(quota&&env.usage)env.usage.aiExhausted=1;else if(env.usage)env.usage.aiUnknown++;throw quota||fail('Não foi possível gerar a sugestão de comentário.',502)}
+ }));
     if(action[1]==='labels'&&method==='GET'){const issue=await readEditableIssue(ref,connection,githubApi);return json({labels:issue.labels,labelsRevision:await labelsRevision(issue.labels)})}
     if(action[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(request),githubApi,await githubOptions(env,userId));let warning='';try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.labels',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(result.labels),userId,ref.repository,ref.number).run()}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return json({...result,warning})}
     if(action[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));return json({comments:data.comments,hasMore:data.hasMore})}return json({comment:await sendIssueComment(ref,connection,await readBody(request),githubApi,d1OperationStore(env.DB,userId))},201)}
