@@ -68,7 +68,7 @@ html[data-theme="dark"] .topnote.disconnected{color:#edca86}html[data-theme="dar
 html[data-theme="dark"] .head,html[data-theme="dark"] .foot,html[data-theme="dark"] .attachment-card,html[data-theme="dark"] .account-drafts,html[data-theme="dark"] .issue-preview-dialog h3{border-color:var(--line)}
 html[data-theme="dark"] .section:after,html[data-theme="dark"] .bar{background:var(--line)}html[data-theme="dark"] .mark{border-color:var(--line)}html[data-theme="dark"] .item.done .mark{background:#194740;border-color:#407e70;color:#8af0d2}
 @media(max-width:560px){.theme-control select{min-width:80px}.top-actions{gap:8px}}
-</style><style>.history-filters{display:grid;gap:6px;margin-top:12px}.history-filters label{margin:0;font-size:11px}.history-filters input,.history-filters select{font-size:12px;min-width:0}.history-dates{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px}.history-dates input{padding:5px;font-size:11px}.history-filters .btn{justify-self:start}</style></head><body>
+</style><style>.history-filters{display:grid;gap:6px;margin-top:12px}.history-filters label{margin:0;font-size:11px}.history-filters input,.history-filters select{font-size:12px;min-width:0}.history-dates{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px}.history-dates input{padding:5px;font-size:11px}.history-filters .btn{justify-self:start}</style><style>.field-ai-actions{display:grid;grid-template-columns:repeat(2,minmax(0,240px));gap:8px;margin:8px 0}.field-ai-actions .btn{width:100%;height:52px;min-height:52px;white-space:normal;line-height:1.3;padding:10px 12px;margin:0}.attachment-tools>.btn{width:min(240px,calc((100% - 8px)/2));height:52px;min-height:52px;white-space:normal;line-height:1.3;padding:10px 12px;flex:none}.attachment-tools{margin-top:8px}</style></head><body>
 <header class="top"><div class="brand"><div class="logo">✳</div>Automação de issues</div><div class="top-actions"><label class="theme-control" for="themeSelect">Tema<select id="themeSelect" aria-label="Tema do site"><option value="light">Claro</option><option value="dark">Escuro</option></select></label><div class="topnote" id="ollamaStatus">Verificando IA…</div><span id="authUserLabel" hidden></span><button id="adminButton" type="button" hidden>Gerenciar acessos</button><button id="logoutButton" type="button" hidden>Sair</button></div></header>
 <section class="auth-screen" id="authScreen" hidden><div class="auth-card"><h1 id="authTitle">Entrar</h1><p id="authDescription">Entre com seu usuário e senha para acessar a automação.</p><form id="authForm"><div id="setupKeyWrap" hidden><label for="setupKey">Chave de configuração inicial</label><input id="setupKey" type="password" autocomplete="off"></div><label for="authUsername">Usuário</label><input id="authUsername" required autocomplete="username"><label for="authPassword">Senha</label><input id="authPassword" type="password" required autocomplete="current-password"><button class="btn primary" id="authSubmit" type="submit">Entrar</button><div class="auth-message" id="authMessage" aria-live="polite"></div></form></div></section>
 <main id="appMain" hidden><div class="crumb">Solicitações <span>/</span> Nova solicitação</div><div class="hero"><div class="eyebrow">Assistente de requisitos</div><h1>Vamos organizar sua solicitação.</h1><p>Conte o que aconteceu e prepare um rascunho claro para sua issue no GitHub.</p></div>
@@ -271,7 +271,7 @@ if(document.fonts&&document.fonts.ready)document.fonts.ready.then(scheduleTextRe
 scheduleTextResize();
 function normalizeFrequency(value){return typeof value==="string"&&value.trim().toUpperCase()==="PONTUAL"?"PONTUAL":"GERAL"}
 function update(){
-  resizeTextFields();$("undoAi").disabled=!aiUndoStack.length||$("organize").disabled;
+  resizeTextFields();refreshFieldUndoButtons();$("undoAi").disabled=!aiUndoStack.length||$("organize").disabled;
   const isOther=$("motivation").value.indexOf("Outras")===0;
   $("otherMotivationField").hidden=!isOther;
   if(!isOther)$("otherMotivation").value="";
@@ -309,6 +309,14 @@ function renderQuestions(questions){
   });
   const button=document.createElement("button");button.type="button";button.className="btn soft ai-answer-button";button.textContent="Responder e atualizar rascunho";button.addEventListener("click",function(){runDraft(true)});box.appendChild(button);
 }
+function refreshFieldUndoButtons(){document.querySelectorAll('[data-undo-field]').forEach(function(button){button.disabled=$('organize').disabled||!aiUndoStack.some(function(change){return change.fields.includes(button.dataset.undoField)})})}
+function undoAiField(id){
+  if($('organize').disabled)return;let index=aiUndoStack.length-1;while(index>=0&&!aiUndoStack[index].fields.includes(id))index--;if(index<0)return;
+  const change=aiUndoStack[index];if($(id).value!==change.after.values[id]&&!confirm('Você editou '+names[id]+' após a IA. Restaurar o texto anterior e substituir essa edição?'))return;
+  $(id).value=change.before.values[id];if(change.before.touched.includes(id))touched.add(id);else touched.delete(id);if(change.before.generated.includes(id))generatedByAi.add(id);else generatedByAi.delete(id);
+  change.fields=change.fields.filter(function(field){return field!==id});if(!change.fields.length&&change.targetField)aiUndoStack.splice(index,1);
+  update();workflow.markDirty();$('aiStatus').textContent=names[id]+' restaurado. Os demais campos e anexos foram preservados.';toast('Alteração da IA desfeita neste campo.');
+}
 function captureAiState(){return {values:Object.fromEntries(ids.map(function(id){return [id,$(id).value]})),touched:Array.from(touched),generated:Array.from(generatedByAi),classification:aiClassification,appliedLabel:aiAppliedLabel,labels:Array.from(selectedLabelNames),questions:lastQuestions.slice(),answers:Array.from($('aiQuestions').querySelectorAll('textarea')).map(function(input){return input.value})}}
 function rememberAiChange(before,targetField){const after=captureAiState(),fields=ids.filter(function(id){return before.values[id]!==after.values[id]});if(!fields.length&&before.classification===after.classification&&JSON.stringify(before.questions)===JSON.stringify(after.questions))return;aiUndoStack.push({before,after,fields,targetField});if(aiUndoStack.length>20)aiUndoStack.shift();$('undoAi').disabled=false}
 $('undoAi').addEventListener('click',function(){
@@ -321,7 +329,7 @@ $('undoAi').addEventListener('click',function(){
 async function runDraft(followup,targetField){
   const originalFieldValue=targetField?$(targetField).value:null;
   const raw=$("raw").value.trim();if(raw.length<10){toast("Descreva a solicitação com um pouco mais de detalhe.");$("raw").focus();return}
-  const button=$("organize"),status=$("aiStatus");button.disabled=true;$("undoAi").disabled=true;document.querySelectorAll("[data-refine-field]").forEach(function(node){node.disabled=true});button.textContent="Analisando com IA…";
+  const button=$("organize"),status=$("aiStatus");button.disabled=true;$("undoAi").disabled=true;refreshFieldUndoButtons();document.querySelectorAll("[data-refine-field]").forEach(function(node){node.disabled=true});button.textContent="Analisando com IA…";
   const answerButton=$("aiQuestions").querySelector("button");if(answerButton)answerButton.disabled=true;
   status.textContent=followup?"A IA está incorporando suas respostas…":"O modelo está organizando os campos. A primeira execução pode demorar um pouco enquanto o modelo carrega.";status.className="assist-status loading";
   try{
@@ -360,7 +368,7 @@ async function runDraft(followup,targetField){
     status.textContent=(questions.length?"Rascunho atualizado por "+result.model+". Responda abaixo para completar os dados pendentes.":"Rascunho sugerido por "+result.model+". Revise as informações antes de usar.")+classificationMessage;status.className="assist-status success";
     workflow.markDirty();toast(followup?"Respostas incorporadas ao rascunho.":"Rascunho gerado pela IA. Revise antes de usar.");
   }catch(error){status.textContent=error.message;status.className="assist-status error";toast("Não foi possível gerar o rascunho.")}
-  finally{button.disabled=false;$("undoAi").disabled=!aiUndoStack.length;document.querySelectorAll("[data-refine-field]").forEach(function(node){node.disabled=false});button.textContent="✦ Organizar com IA";const answerButton=$("aiQuestions").querySelector("button");if(answerButton)answerButton.disabled=false}
+  finally{button.disabled=false;$("undoAi").disabled=!aiUndoStack.length;refreshFieldUndoButtons();document.querySelectorAll("[data-refine-field]").forEach(function(node){node.disabled=false});button.textContent="✦ Organizar com IA";const answerButton=$("aiQuestions").querySelector("button");if(answerButton)answerButton.disabled=false}
 }
 $("organize").addEventListener("click",function(){runDraft(false)});
 
@@ -553,7 +561,7 @@ const workflow=window.setupIssueWorkflow({
   }
 });
 generated.filter(function(id){return !["urgency","motivation","requester","units"].includes(id)}).forEach(function(id){
-  const field=$(id),button=document.createElement('button');button.type='button';button.className='btn soft refine-field';button.dataset.refineField=id;button.textContent='Refazer este campo com IA';button.addEventListener('click',function(){if($('organize').disabled)return;if(field.value.trim()&&!confirm('Refazer somente '+names[id]+'? Os demais campos e anexos serão mantidos.'))return;runDraft(false,id)});field.after(button);
+  const field=$(id),button=document.createElement('button');button.type='button';button.className='btn soft refine-field';button.dataset.refineField=id;button.textContent='Refazer este campo com IA';button.addEventListener('click',function(){if($('organize').disabled)return;if(field.value.trim()&&!confirm('Refazer somente '+names[id]+'? Os demais campos e anexos serão mantidos.'))return;runDraft(false,id)});const actions=document.createElement('div');actions.className='field-ai-actions';const undo=document.createElement('button');undo.type='button';undo.className='btn soft';undo.textContent='Desfazer IA';undo.dataset.undoField=id;undo.disabled=true;undo.addEventListener('click',function(){undoAiField(id)});actions.append(button,undo);field.after(actions);
 });
 })();});
 </script></body></html>
