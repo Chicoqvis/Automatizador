@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import worker from '../cloudflare-app-worker.mjs';
-import { validateSavedDraft, rankSimilarIssues, findSimilarIssues } from '../issue-workflow.mjs';
+import { validateSavedDraft, rankSimilarIssues, findSimilarIssues, fieldRefinementInstruction } from '../issue-workflow.mjs';
 import { formatDraftTopics } from '../draft-prompt.mjs';
 
 test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns',()=>{
@@ -15,12 +15,13 @@ test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns'
 
 test('rascunhos são isolados por conta, persistem anexos e impedem edição com revisão antiga',async()=>{
   const db=new DatabaseSync(':memory:');
-  for(const file of ['0001_initial.sql','0002_saved_drafts.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
   for(const id of ['alice','bob']){
     db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?,?,?)').run(id,id,id,'user',1,Date.now(),'salt','hash');
     db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(id).digest('hex'),id,Date.now()+60000);
   }
   const env={DB:{prepare(sql){let values=[];return {bind(...args){values=args;return this},async first(){return db.prepare(sql).get(...values)||null},async all(){return {results:db.prepare(sql).all(...values)}},async run(){const result=db.prepare(sql).run(...values);return {meta:{changes:Number(result.changes)}}}}}}};
+  env.DB.batch=statements=>Promise.all(statements.map(statement=>statement.run()));
   async function request(path,method='GET',body,account='alice'){
     const response=await worker.fetch(new Request('https://test.example'+path,{method,headers:{Cookie:'automacao_session='+account,Origin:'https://test.example','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)}),env);
     return {status:response.status,data:await response.json()};
@@ -36,7 +37,25 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   assert.equal((await request('/api/drafts/'+id,'DELETE',{revision:2},'bob')).status,409);
   assert.equal((await request('/api/drafts/'+id,'DELETE',{revision:2})).status,200);
   assert.equal((await request('/api/drafts/'+id)).status,404);
-  assert.equal((await request('/api/drafts','GET',undefined,'unknown')).status,401);db.close();
+  assert.equal((await request('/api/drafts','GET',undefined,'unknown')).status,401);
+  const entry={number:42,title:'Filtro por paciente',repository:'owner/repo',url:'https://github.com/owner/repo/issues/42',createdAt:Date.now(),labels:['melhoria']};
+  assert.equal((await request('/api/history','POST',{issues:[entry]})).status,200);
+  assert.equal((await request('/api/history','POST',{issues:[entry]})).status,200);
+  assert.equal((await request('/api/history')).data.issues.length,1);
+  assert.equal((await request('/api/history','GET',undefined,'bob')).data.issues.length,0);
+  assert.equal((await request('/api/history','DELETE',undefined,'bob')).status,200);
+  assert.equal((await request('/api/history')).data.issues.length,1);
+  assert.equal((await request('/api/history','POST',{issues:[{...entry,url:'https://example.com/issues/42'}]})).status,400);
+  assert.equal((await request('/api/history','DELETE')).status,200);
+  assert.equal((await request('/api/history')).data.issues.length,0);db.close();
+});
+
+test('orientação de revisão fica limitada ao campo escolhido',()=>{
+  const properties={description:{},problem:{}};
+  const instruction=fieldRefinementInstruction({field:'description',fieldInstruction:'Detalhe as regras e considere a unidade Centro'},properties);
+  assert(instruction.includes('somente o campo description'));assert(instruction.includes('Detalhe as regras'));
+  assert.equal(fieldRefinementInstruction({field:'desconhecido',fieldInstruction:'Instrução'},properties),'');
+  assert.throws(()=>fieldRefinementInstruction({field:'description',fieldInstruction:'x'.repeat(2001)},properties),e=>e.status===400);
 });
 
 test('validação dos rascunhos limita tamanho e elimina anexos inseguros',()=>{

@@ -1,4 +1,4 @@
-import { validateSavedDraft, findSimilarIssues } from "./issue-workflow.mjs";
+import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
 const MODEL_DEFAULT = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -276,7 +276,7 @@ async function generateDraft(env, body) {
     data_de_hoje: new Date().toISOString().slice(0, 10), tipo_solicitacao: preference || "automático",
     orientacao_do_modelo: guidance(preference), opcoes_motivacao: MOTIVATION, opcoes_urgencia: URGENCY
   };
-  const systemPrompt = DRAFT_SYSTEM_PROMPT + (Object.hasOwn(SCHEMA.properties,body.field) && body.field!=="questions" ? "\nRefaça somente o campo "+body.field+". Use os demais campos como contexto e preserve seus fatos. Retorne o JSON do schema, mas concentre sua análise e melhoria nesse campo." : "");
+  const systemPrompt = DRAFT_SYSTEM_PROMPT + fieldRefinementInstruction(body,SCHEMA.properties);
   const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: JSON.stringify(userData) }
@@ -371,6 +371,12 @@ async function route(request, env) {
   }
   if (path.startsWith("/api/") && !session) throw fail("Faça login para continuar.", 401);
   const userId = session?.user.id;
+  if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
+  if(path==='/api/history'&&method==='POST'){
+    const body=await readBody(request,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw fail('Envie até 200 registros.');
+    const entries=body.issues.map(validateHistoryEntry);if(entries.length)await env.DB.batch(entries.map(entry=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt)));return json({ok:true});
+  }
+  if(path==='/api/history'&&method==='DELETE'){await env.DB.prepare('DELETE FROM issue_history WHERE user_id=?').bind(userId).run();return json({ok:true})}
   if(path==='/api/drafts'&&method==='GET'){
     const {results}=await env.DB.prepare('SELECT id,name,revision,updated_at FROM saved_drafts WHERE user_id=? ORDER BY updated_at DESC').bind(userId).all();return json({drafts:results});
   }
@@ -464,7 +470,9 @@ async function route(request, env) {
     await env.DB.batch([env.DB.prepare("DELETE FROM github_connections WHERE user_id=?").bind(userId), env.DB.prepare("DELETE FROM github_identities WHERE user_id=?").bind(userId)]);
     return json({ connected: false });
   }
-  if (path === "/api/github/issues" && method === "POST") return json(await createGithubIssue(env, await readBody(request), userId), 201);
+  if (path === "/api/github/issues" && method === "POST") {
+    const result=await createGithubIssue(env,await readBody(request),userId);try{const entry=validateHistoryEntry({...result,createdAt:Date.now()});await env.DB.prepare("INSERT OR REPLACE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)").bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt).run();result.createdAt=entry.createdAt}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return json(result,201);
+  }
   if (path === "/api/status" && method === "GET") return json({ provider: "cloudflare", available: true, model: env.CLOUDFLARE_AI_MODEL || MODEL_DEFAULT, modelInstalled: true });
   if (path === "/api/draft" && method === "POST") return json(await generateDraft(env, await readBody(request)));
   if (path.startsWith("/api/")) throw fail("Rota não encontrada.", 404);

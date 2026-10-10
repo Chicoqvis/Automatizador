@@ -45,5 +45,12 @@ window.setupIssueWorkflow=function(config){
     }).catch(error=>{if(!dialog.isConnected)return;similarStatus.textContent=error.message+' Você pode revisar o repositório e continuar.';ack.hidden=false});
     return answer;
   }
-  return {review,markDirty(){dirty=true},reset(){active=null;dirty=true;select.value='';message('Novo rascunho. Use Salvar na conta quando quiser mantê-lo.')}};
+  function refine(fieldName){
+    const dialog=el('dialog',undefined,'issue-preview-dialog'),title=el('h2','Refazer '+fieldName),label=el('label','Como a IA deve melhorar este campo?'),input=el('textarea'),examples=el('div',undefined,'workflow-actions'),footer=el('footer',undefined,'workflow-actions'),cancel=el('button','Cancelar','btn soft'),submit=el('button','Refazer campo','btn primary');
+    input.maxLength=2000;input.rows=4;input.id='fieldRefinementInstruction';label.htmlFor=input.id;input.placeholder='Opcional: mais objetivo, detalhe as regras ou considere este cenário…';
+    ['Mais objetivo','Detalhe as regras','Considere este cenário: '].forEach(text=>{const button=el('button',text,'btn soft');button.type='button';button.addEventListener('click',()=>{input.value=text;input.focus()});examples.append(button)});
+    cancel.type=submit.type='button';footer.append(cancel,submit);dialog.append(title,label,input,examples,el('p','Somente este campo será alterado. Você pode desfazer depois.','workflow-note'),footer);document.body.append(dialog);dialog.showModal();input.focus();
+    return new Promise(resolve=>{let done=false;const finish=value=>{if(done)return;done=true;dialog.close();dialog.remove();resolve(value)};cancel.addEventListener('click',()=>finish(null));submit.addEventListener('click',()=>finish(input.value.trim()));dialog.addEventListener('cancel',event=>{event.preventDefault();finish(null)})});
+  }
+  return {review,refine,markDirty(){dirty=true},reset(){active=null;dirty=true;select.value='';message('Novo rascunho. Use Salvar na conta quando quiser mantê-lo.')}};
 };

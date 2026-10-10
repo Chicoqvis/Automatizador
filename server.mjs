@@ -1,4 +1,4 @@
-import { validateSavedDraft, findSimilarIssues, workflowError } from "./issue-workflow.mjs";
+import { validateSavedDraft, findSimilarIssues, workflowError, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle, formatDraftTopics } from "./draft-prompt.mjs";
 import http from "node:http";
@@ -153,7 +153,7 @@ async function generate(body) {
     opcoes_motivacao: MOTIVATION,
     opcoes_urgencia: URGENCY
   };
-  const systemPrompt = DRAFT_SYSTEM_PROMPT + (Object.hasOwn(schema.properties,body.field) && body.field!=="questions" ? "\nRefaça somente o campo "+body.field+". Use os demais campos como contexto e preserve seus fatos. Retorne o JSON do schema, mas concentre sua análise e melhoria nesse campo." : "");
+  const systemPrompt = DRAFT_SYSTEM_PROMPT + fieldRefinementInstruction(body,schema.properties);
   const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: JSON.stringify(userData) }
@@ -542,6 +542,9 @@ async function createGithubIssue(body, userId) {
   }
   return result;
 }
+function localHistory(){const file=path.join(DATA_DIR,'issue-history.json');return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]}
+function persistLocalHistory(entries){fs.mkdirSync(DATA_DIR,{recursive:true});const file=path.join(DATA_DIR,'issue-history.json');fs.writeFileSync(file+'.tmp',JSON.stringify(entries));fs.renameSync(file+'.tmp',file)}
+function addLocalHistory(userId,items){const stored=localHistory();for(const item of items){const entry=validateHistoryEntry(item);if(!stored.some(row=>row.userId===userId&&row.entry.repository===entry.repository&&row.entry.number===entry.number))stored.push({userId,entry})}persistLocalHistory(stored)}
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1:" + PORT);
   const pathname = url.pathname;
@@ -583,6 +586,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname.startsWith("/api/") && !session) return send(res, 401, { error: "Faça login para continuar." });
     const userId = session && session.user.id;
+    if(pathname==='/api/history'&&method==='GET')return send(res,200,{issues:localHistory().filter(row=>row.userId===userId).map(row=>row.entry).sort((a,b)=>b.createdAt-a.createdAt).slice(0,500)});
+    if(pathname==='/api/history'&&method==='POST'){const body=await readBody(req,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw workflowError('Envie até 200 registros.');addLocalHistory(userId,body.issues);return send(res,200,{ok:true})}
+    if(pathname==='/api/history'&&method==='DELETE'){persistLocalHistory(localHistory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
     if(pathname.startsWith('/api/drafts')){
       const draftFile=path.join(DATA_DIR,'drafts.json');let stored=[];
       if(fs.existsSync(draftFile))stored=JSON.parse(fs.readFileSync(draftFile,'utf8'));
@@ -667,7 +673,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === "/api/github/connect" && method === "POST") return send(res, 200, await connectGithub(await readBody(req), userId));
     if (pathname === "/api/github/options" && method === "GET") return send(res, 200, await githubOptions(userId));
     if (pathname === "/api/github/disconnect" && method === "POST") { githubConnections.delete(userId); githubOAuthIdentities.delete(userId); return send(res, 200, { connected: false }); }
-    if (pathname === "/api/github/issues" && method === "POST") return send(res, 201, await createGithubIssue(await readBody(req), userId));
+    if (pathname === "/api/github/issues" && method === "POST") {const result=await createGithubIssue(await readBody(req),userId);try{result.createdAt=Date.now();addLocalHistory(userId,[result])}catch(error){result.historyError="A issue foi criada, mas o histórico da conta não pôde ser salvo."}return send(res,201,result)}
     if (pathname === "/api/status" && method === "GET") {
       return send(res, 200, await aiStatus());
     }

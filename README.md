@@ -103,3 +103,11 @@ O botão **Desfazer IA** recupera a alteração anterior aplicada pela IA, inclu
 O **Histórico de issues** permite combinar pesquisa de título ou número, repositório e intervalo de datas. Os filtros consideram a data de criação registrada no navegador. **Limpar filtros** exibe novamente os registros; **Limpar** apaga somente o histórico local, sem excluir issues do GitHub. São mantidos até 200 registros por conta neste navegador; registros antigos já descartados pelo limite anterior não são recuperados.
 
 Os campos com **Refazer este campo com IA** também têm **Desfazer IA** ao lado, para restaurar apenas a alteração anterior daquele campo e preservar o restante do rascunho. O botão geral continua permitindo desfazer as alterações restantes de uma geração completa. Os botões de refazer e anexar têm tamanho alinhado, incluindo no celular.
+
+## Orientação ao refazer e histórico sincronizado
+
+Ao clicar em **Refazer este campo com IA**, informe opcionalmente como melhorar o texto. A janela oferece exemplos e aceita uma orientação de até 2.000 caracteres. Somente o campo escolhido é atualizado; desfazer continua disponível.
+
+As novas issues criadas pela ferramenta são registradas automaticamente no histórico da conta. Acesse em outro dispositivo e use **Atualizar histórico** para consultar as últimas 500 issues registradas. As pesquisas por título/número, repositório e datas continuam disponíveis. **Importar histórico deste navegador** permite trazer registros antigos locais para a conta; a importação preserva datas e não duplica uma mesma issue. **Limpar** apaga o histórico da conta em todos os dispositivos, sem apagar as issues no GitHub.
+
+Antes de publicar esta versão, aplique `npx.cmd wrangler d1 migrations apply automatizador-db --remote` para criar `issue_history`. No servidor local, o histórico da conta fica em `data/issue-history.json`, ignorado pelo Git. Se a gravação do histórico falhar após criar uma issue, o usuário recebe um aviso e pode importar a cópia local; a issue não deve ser criada novamente.

@@ -1,5 +1,17 @@
 export const DRAFT_FIELDS = ['title','requester','date','units','frequency','problem','description','impacts','today','nonimplementation','motivation','otherMotivation','urgency'];
 export function workflowError(message,status=400){return Object.assign(new Error(message),{status})}
+export function validateHistoryEntry(item){
+  if(!item||!Number.isSafeInteger(item.number)||item.number<1||typeof item.repository!=='string'||!/^[-\w.]+\/[-\w.]+$/.test(item.repository)||typeof item.title!=='string')throw workflowError('Registro de histórico inválido.');
+  let url;try{url=new URL(item.url)}catch{throw workflowError('Link da issue inválido.')}
+  if(url.origin!=='https://github.com'||url.pathname.toLowerCase()!==('/'+item.repository+'/issues/'+item.number).toLowerCase()||url.search||url.hash)throw workflowError('O link não corresponde à issue.');
+  return {number:item.number,title:item.title.slice(0,256),url:url.href,repository:item.repository.toLowerCase(),labels:Array.isArray(item.labels)?item.labels.filter(x=>typeof x==='string').slice(0,100):[],project:typeof item.project==='string'?item.project.slice(0,200):'',status:typeof item.status==='string'?item.status.slice(0,200):'',createdAt:typeof item.createdAt==='number'&&Number.isFinite(item.createdAt)&&item.createdAt>0&&item.createdAt<=Date.now()+60000?Math.trunc(item.createdAt):Date.now()};
+}
+export function fieldRefinementInstruction(body,properties){
+  if(!Object.hasOwn(properties,body.field)||body.field==='questions')return '';
+  const instruction=typeof body.fieldInstruction==='string'?body.fieldInstruction.trim():'';
+  if(instruction.length>2000)throw workflowError('A orientação deve ter até 2.000 caracteres.');
+  return '\nRefaça somente o campo '+body.field+'. Use os demais campos como contexto e preserve seus fatos. Retorne o JSON do schema, mas concentre sua análise e melhoria nesse campo.'+(instruction?'\nOrientação de revisão fornecida pelo usuário: '+JSON.stringify(instruction)+'. Aplique-a somente a esse campo, preservando as regras de formato e a distinção entre fatos e hipóteses.':'');
+}
 export function validateSavedDraft(body){
   const name=typeof body.name==='string'?body.name.trim().slice(0,120):'';
   if(!name)throw workflowError('Informe um nome para o rascunho.');
