@@ -166,3 +166,11 @@ Na criação ou no histórico, é possível incluir uma issue em até cinco proj
 **Repositórios salvos na minha conta** permite conectar novos repositórios e alternar entre os já autorizados. O formulário mantém os textos e limpa as seleções de labels e projetos para revisão no novo destino. Na Cloudflare, aplique a migração 0008_saved_repositories.sql: os acessos persistem por usuário, com tokens criptografados. A lista não expõe credenciais. Desconectar encerra a conexão ativa; remover dos salvos retira somente a entrada da lista. No servidor local, os acessos salvos ficam somente em memória e precisam ser reconectados após reiniciar; OAuth pode exigir nova autorização.
 
 A pesquisa em **Memória da minha conta** também consulta o conteúdo, além de título, número e repositório, e mostra um trecho correspondente. O filtro ocorre antes do limite de 500 resultados, mantendo o isolamento entre contas. A seleção automática de referências pela IA continua com seus limites próprios.
+
+## Sino de comentários
+
+O sino consulta novos comentários nas issues do histórico da conta, usando os repositórios salvos e suas credenciais autorizadas. A verificação ocorre a cada dois minutos enquanto a página estiver visível, ao voltar à página e pelo botão Atualizar. A primeira consulta estabelece o marco inicial sem alertar comentários antigos. Comentários posteriores podem ser encontrados ao reabrir o site no mesmo navegador. Repositórios sem acesso válido mostram aviso sem impedir a consulta dos demais.
+
+O contador indica avisos não lidos; abrir o link marca aquele aviso, e Marcar todas como lidas limpa o contador. A caixa guarda até 500 avisos no navegador, separados por conta. Não envia notificações com o site fechado nem sincroniza as leituras entre dispositivos. Cada ciclo faz uma consulta da lista e uma página de comentários por repositório com issues próprias; páginas adicionais continuam nas próximas verificações. As consultas consomem requisições da ferramenta e da API GitHub. Editar um comentário antigo não gera aviso de comentário novo.
+
+Editar issue, Labels, Comentários e Projetos usam botões de 105 × 34 px, em quatro colunas quando houver espaço e duas no celular.

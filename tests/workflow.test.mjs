@@ -248,3 +248,9 @@ test('busca compara títulos, exclui pull requests e consulta o repositório con
   const result=await findSimilarIssues({owner:'o',repo:'r',token:'token'},title,async(path,token)=>{calls++;assert.equal(token,'token');assert(decodeURIComponent(path).includes('repo:o/r is:issue in:title'));return new Response(JSON.stringify({items,total_count:3}))});assert.equal(result.issues.length,1);assert(calls<=3);
   await assert.rejects(()=>findSimilarIssues(null,title,()=>{}),e=>e.status===409);
 });
+
+ test('notificações filtram issues da conta, respeitam marco inicial e paginam sem perder o cursor',async()=>{
+ const {commentNotifications}=await import('../comment-notifications.mjs');const since=Date.now()-60000;let calls=0;
+ const report=await commentNotifications({owner:'owner',repo:'repo',token:'secret'},[{repository:'owner/repo',number:42,title:'Minha issue'},{repository:'outro/repo',number:99,title:'Outro repo'}],new URLSearchParams({since:String(since),page:'2'}),async(url,token)=>{calls++;assert(url.includes('page=2'));assert.equal(token,'secret');return new Response(JSON.stringify([{id:1,issue_url:'https://api.github.com/repos/owner/repo/issues/42',body:'Comentário novo',created_at:new Date(since+1000).toISOString(),user:{login:'colega'}},{id:2,issue_url:'https://api.github.com/repos/owner/repo/issues/99',body:'Não pertence à conta',created_at:new Date().toISOString()},{id:3,issue_url:'https://api.github.com/repos/owner/repo/issues/42',created_at:new Date(since-1000).toISOString()}]))});
+ assert.equal(calls,1);assert.equal(report.comments.length,1);assert.equal(report.comments[0].number,42);assert.equal(report.comments[0].author,'colega');assert.equal(report.hasMore,false);await assert.rejects(commentNotifications({},[],new URLSearchParams({since:'NaN'}),()=>{}));
+ });

@@ -1,3 +1,4 @@
+import { commentNotifications } from './comment-notifications.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, workflowError, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
@@ -718,6 +719,9 @@ const server = http.createServer(async (req, res) => {
       await saveUsers(); return send(res, 200, { user: safeUser(target) });
     }
 
+    if(pathname==='/api/notifications/comments'&&method==='GET'){
+ const repository=String(url.searchParams.get('repository')||'').toLowerCase(),saved=savedGithubRepositories.get(userId)?.get(repository);if(!saved)return send(res,404,{error:'Repositório não salvo nesta conta.'});const identity=saved.githubUser?await ensureGithubOAuthIdentity(userId):null,token=saved.githubUser?identity?.token:saved.token;if(!token)return send(res,401,{error:'Autorize seu GitHub novamente.'});return send(res,200,await commentNotifications({...saved,token},localHistory().filter(x=>x.userId===userId).map(x=>x.entry),url.searchParams,githubApi));
+ }
     if (pathname === "/api/github/status" && method === "GET") {
       const connection = githubConnections.get(userId);
       return send(res, 200, connection ? { connected: true, repository: connection.owner + "/" + connection.repo, repositoryUrl: connection.repositoryUrl, githubUser: connection.githubUser } : { connected: false });
@@ -752,7 +756,7 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
+    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {

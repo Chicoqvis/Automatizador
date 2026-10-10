@@ -1,3 +1,4 @@
+import { commentNotifications } from './comment-notifications.mjs';
 import { dailyAiQuotaError } from "./ai-quota.mjs";
 import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mjs';
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
@@ -511,6 +512,11 @@ async function route(request, env) {
     const updated = await env.DB.prepare("SELECT id,username,role,active,created_at FROM users WHERE id=?").bind(target.id).first();
     return json({ user: safeUser(updated) });
   }
+  if(path==='/api/notifications/comments'&&method==='GET'){
+ const repository=String(url.searchParams.get('repository')||'').toLowerCase(),row=await env.DB.prepare('SELECT * FROM saved_repositories WHERE user_id=? AND repository=?').bind(userId,repository).first();if(!row)throw fail('Repositório não salvo nesta conta.',404);
+ const token=row.github_user?(await githubIdentity(env,userId))?.token:await decryptSecret(row.token_cipher,env);if(!token)throw fail('Autorize seu GitHub novamente.',401);
+ const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? AND repository=?').bind(userId,repository).all();return json(await commentNotifications({owner:row.owner,repo:row.repo,token},results.map(x=>JSON.parse(x.entry)),url.searchParams,githubApi));
+ }
   if (path === "/api/github/status" && method === "GET") {
     const connection = await env.DB.prepare("SELECT owner,repo,repository_url,github_user FROM github_connections WHERE user_id=?").bind(userId).first();
     return json(connection ? { connected: true, repository: connection.owner + "/" + connection.repo, repositoryUrl: connection.repository_url, githubUser: connection.github_user || "" } : { connected: false });
@@ -539,7 +545,7 @@ async function route(request, env) {
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
-  if(['/public/github-actions-ui.js','/public/repositories-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;
