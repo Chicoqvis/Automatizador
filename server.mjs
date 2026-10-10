@@ -1,3 +1,4 @@
+import { validateSavedDraft, findSimilarIssues, workflowError } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle } from "./draft-prompt.mjs";
 import http from "node:http";
@@ -152,7 +153,7 @@ async function generate(body) {
     opcoes_motivacao: MOTIVATION,
     opcoes_urgencia: URGENCY
   };
-  const systemPrompt = DRAFT_SYSTEM_PROMPT;
+  const systemPrompt = DRAFT_SYSTEM_PROMPT + (Object.hasOwn(schema.properties,body.field) && body.field!=="questions" ? "\nRefaça somente o campo "+body.field+". Use os demais campos como contexto e preserve seus fatos. Retorne o JSON do schema, mas concentre sua análise e melhoria nesse campo." : "");
   const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: JSON.stringify(userData) }
@@ -581,6 +582,25 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname.startsWith("/api/") && !session) return send(res, 401, { error: "Faça login para continuar." });
     const userId = session && session.user.id;
+    if(pathname.startsWith('/api/drafts')){
+      const draftFile=path.join(DATA_DIR,'drafts.json');let stored=[];
+      if(fs.existsSync(draftFile))stored=JSON.parse(fs.readFileSync(draftFile,'utf8'));
+      const persist=()=>{fs.mkdirSync(DATA_DIR,{recursive:true});const temp=draftFile+'.tmp';fs.writeFileSync(temp,JSON.stringify(stored));fs.renameSync(temp,draftFile)};
+      const match=pathname.match(/^\/api\/drafts\/([a-zA-Z0-9-]+)$/);
+      if(pathname==='/api/drafts'&&method==='GET')return send(res,200,{drafts:stored.filter(x=>x.userId===userId).sort((a,b)=>b.updated_at-a.updated_at).map(({snapshot,userId,...metadata})=>metadata)});
+      if(pathname==='/api/drafts'&&method==='POST'){
+        const body=await readBody(req,110000),draft=validateSavedDraft(body);stored=fs.existsSync(draftFile)?JSON.parse(fs.readFileSync(draftFile,'utf8')):[];
+        let row;if(body.id){row=stored.find(x=>x.id===body.id&&x.userId===userId);if(!row||row.revision!==body.revision)throw workflowError('O rascunho mudou. Recarregue antes de salvar.',409);Object.assign(row,draft,{revision:row.revision+1,updated_at:Date.now()})}else{row={id:randomUUID(),userId,...draft,revision:1,updated_at:Date.now()};stored.push(row)}persist();return send(res,200,{draft:{id:row.id,name:row.name,revision:row.revision,updated_at:row.updated_at}});
+      }
+      if(match){const row=stored.find(x=>x.id===match[1]&&x.userId===userId);if(!row)throw workflowError('Rascunho não encontrado.',404);
+        if(method==='GET')return send(res,200,{draft:{id:row.id,name:row.name,revision:row.revision,snapshot:row.snapshot}});
+        if(method==='DELETE'){const body=await readBody(req);stored=JSON.parse(fs.readFileSync(draftFile,'utf8'));const current=stored.find(x=>x.id===row.id&&x.userId===userId);if(!current||current.revision!==body.revision)throw workflowError('O rascunho mudou. Recarregue antes de excluir.',409);stored=stored.filter(x=>x.id!==row.id);persist();return send(res,200,{ok:true})}
+      }
+    }
+    if(pathname==='/api/github/similar'&&method==='GET'){
+      if(githubConnections.get(userId)?.githubUser)await ensureGithubOAuthIdentity(userId);
+      return send(res,200,await findSimilarIssues(githubConnections.get(userId),url.searchParams.get('title'),githubApi));
+    }
     if(pathname === "/api/github/attachments" && method === "POST") {
       if(!githubConnections.has(userId))return send(res,409,{error:"Conecte um repositório GitHub primeiro."});
       if(githubConnections.get(userId).githubUser)await ensureGithubOAuthIdentity(userId);

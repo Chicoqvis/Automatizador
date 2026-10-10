@@ -84,3 +84,14 @@ Formatos: PNG, JPG, JPEG, GIF, WEBP, MP4, WEBM e MOV; até 10 MB por arquivo. O 
 Os links dos anexos ficam salvos no rascunho deste navegador. Remover um anexo do campo retira sua referência do rascunho; não apaga o arquivo já enviado ao GitHub. Os anexos não são enviados para análise pela IA.
 
 A implementação utiliza o mesmo endpoint de anexos empregado pelo [GitHub CLI](https://github.com/cli/cli/blob/trunk/internal/attachments/client.go).
+
+## Revisão, IA por campo e rascunhos por conta
+
+- **Prévia da issue:** ao clicar em Criar issue, revise título, labels, projeto/status, texto e anexos. Voltar e editar não envia nada. A issue é enviada somente em Confirmar e criar issue.
+- **Issues semelhantes:** a prévia consulta títulos no repositório conectado, incluindo issues abertas e fechadas. Correspondências são aproximadas; não substituem a revisão humana. Se houver correspondências, pesquisa limitada ou erro de consulta, marque que revisou o aviso antes de continuar.
+- **Refazer este campo com IA:** regenera apenas o campo escolhido, usando o relato e os outros campos como contexto, preservando os demais campos e anexos. Uma edição feita no campo durante a geração é preservada.
+- **Rascunhos da minha conta:** Salvar na conta cria ou atualiza um rascunho; Salvar como novo cria outra cópia. Abra, atualize a lista ou exclua rascunhos. Inclui relato, campos, classificação, anexos e seleções do GitHub; labels/projeto só são restaurados quando o repositório conectado corresponde ao salvo. A conexão GitHub e seus tokens não são armazenados no rascunho. O salvamento é explícito: clique novamente em Salvar na conta após editar. O rascunho aberto também continua salvo localmente neste navegador.
+
+No Cloudflare, aplique `npx.cmd wrangler d1 migrations apply automatizador-db --remote` antes de publicar a versão com a tabela de rascunhos. Os registros são isolados por usuário e protegidos contra sobrescrita por versões antigas. No servidor local, os rascunhos ficam em `data/drafts.json` (ignorado pelo Git).
+
+Validação da persistência e busca: `node --test tests/workflow.test.mjs` (Node.js 24).

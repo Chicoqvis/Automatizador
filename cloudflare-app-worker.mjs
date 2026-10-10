@@ -1,3 +1,4 @@
+import { validateSavedDraft, findSimilarIssues } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
 import { DRAFT_SYSTEM_PROMPT, formatIssueTitle } from "./draft-prompt.mjs";
 const MODEL_DEFAULT = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -54,9 +55,9 @@ function withCookie(response, value, maxAge) {
   headers.append("Set-Cookie", cookie(value, maxAge));
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
-async function readBody(request) {
+async function readBody(request,maxBytes=MAX_BODY) {
   const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_BODY) throw fail("A descrição ultrapassa o limite de 30 KB.", 413);
+  if (new TextEncoder().encode(text).byteLength > maxBytes) throw fail("A descrição ultrapassa o limite de 30 KB.", 413);
   try { return JSON.parse(text || "{}"); }
   catch { throw fail("O conteúdo enviado não é um JSON válido."); }
 }
@@ -275,7 +276,7 @@ async function generateDraft(env, body) {
     data_de_hoje: new Date().toISOString().slice(0, 10), tipo_solicitacao: preference || "automático",
     orientacao_do_modelo: guidance(preference), opcoes_motivacao: MOTIVATION, opcoes_urgencia: URGENCY
   };
-  const systemPrompt = DRAFT_SYSTEM_PROMPT;
+  const systemPrompt = DRAFT_SYSTEM_PROMPT + (Object.hasOwn(SCHEMA.properties,body.field) && body.field!=="questions" ? "\nRefaça somente o campo "+body.field+". Use os demais campos como contexto e preserve seus fatos. Retorne o JSON do schema, mas concentre sua análise e melhoria nesse campo." : "");
   const messages = [
     { role: "system", content: systemPrompt },
     { role: "user", content: JSON.stringify(userData) }
@@ -369,6 +370,25 @@ async function route(request, env) {
   }
   if (path.startsWith("/api/") && !session) throw fail("Faça login para continuar.", 401);
   const userId = session?.user.id;
+  if(path==='/api/drafts'&&method==='GET'){
+    const {results}=await env.DB.prepare('SELECT id,name,revision,updated_at FROM saved_drafts WHERE user_id=? ORDER BY updated_at DESC').bind(userId).all();return json({drafts:results});
+  }
+  if(path==='/api/drafts'&&method==='POST'){
+    const body=await readBody(request,110000),draft=validateSavedDraft(body),id=body.id||crypto.randomUUID();
+    if(body.id){
+      const result=await env.DB.prepare('UPDATE saved_drafts SET name=?,snapshot=?,revision=revision+1,updated_at=? WHERE id=? AND user_id=? AND revision=?').bind(draft.name,JSON.stringify(draft.snapshot),Date.now(),id,userId,body.revision).run();
+      if(!result.meta.changes)throw fail('O rascunho foi alterado em outro dispositivo ou removido. Recarregue antes de salvar.',409);
+    }else await env.DB.prepare('INSERT INTO saved_drafts(id,user_id,name,snapshot,updated_at) VALUES(?,?,?,?,?)').bind(id,userId,draft.name,JSON.stringify(draft.snapshot),Date.now()).run();
+    const row=await env.DB.prepare('SELECT id,name,revision,updated_at FROM saved_drafts WHERE id=? AND user_id=?').bind(id,userId).first();return json({draft:row});
+  }
+  const draftMatch=path.match(/^\/api\/drafts\/([a-zA-Z0-9-]+)$/);
+  if(draftMatch&&method==='GET'){
+    const row=await env.DB.prepare('SELECT * FROM saved_drafts WHERE id=? AND user_id=?').bind(draftMatch[1],userId).first();if(!row)throw fail('Rascunho não encontrado.',404);return json({draft:{id:row.id,name:row.name,revision:row.revision,snapshot:JSON.parse(row.snapshot)}});
+  }
+  if(draftMatch&&method==='DELETE'){
+    const body=await readBody(request);const result=await env.DB.prepare('DELETE FROM saved_drafts WHERE id=? AND user_id=? AND revision=?').bind(draftMatch[1],userId,body.revision).run();if(!result.meta.changes)throw fail('O rascunho mudou. Recarregue antes de excluir.',409);return json({ok:true});
+  }
+  if(path==='/api/github/similar'&&method==='GET')return json(await findSimilarIssues(await githubConnection(env,userId),url.searchParams.get('title'),githubApi));
   if(path === "/api/github/attachments" && method === "POST") {
     const connection=await githubConnection(env,userId);if(!connection)throw fail("Conecte um repositório GitHub primeiro.",409);
     return json(await uploadGithubAttachment(connection,url.searchParams.get("name"),await readAttachment(request.body)),201);
@@ -447,6 +467,7 @@ async function route(request, env) {
   if (path === "/api/status" && method === "GET") return json({ provider: "cloudflare", available: true, model: env.CLOUDFLARE_AI_MODEL || MODEL_DEFAULT, modelInstalled: true });
   if (path === "/api/draft" && method === "POST") return json(await generateDraft(env, await readBody(request)));
   if (path.startsWith("/api/")) throw fail("Rota não encontrada.", 404);
+  if(path==="/public/workflow-ui.js" && ["GET","HEAD"].includes(method))return env.ASSETS.fetch(new Request(new URL("/workflow-ui.js",request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;
