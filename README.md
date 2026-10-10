@@ -77,7 +77,7 @@ Revise a saída de `git status` antes de fazer o commit. A remoção do próximo
 
 ## Imagens e vídeos nos campos
 
-Conecte o repositório GitHub e use **Anexar imagem ou vídeo** nos campos de contexto e descrição. Também é possível colar um print ou arrastar arquivos para o campo. A ferramenta envia o arquivo ao GitHub usando a conexão do usuário e mostra uma prévia. O link é incluído automaticamente na seção correspondente ao criar ou copiar a issue.
+Conecte o repositório GitHub e use **Anexar imagem ou vídeo** nos campos de contexto e descrição. Também é possível colar um print ou arrastar arquivos para o campo. A ferramenta envia o arquivo ao GitHub usando a conexão do usuário e mostra uma prévia. O link é incluído automaticamente na seção correspondente ao criar a issue.
 
 Formatos: PNG, JPG, JPEG, GIF, WEBP, MP4, WEBM e MOV; até 10 MB por arquivo. O upload exige acesso de escrita ao repositório e permissões suficientes no token. A reprodução de vídeos depende do formato e dos codecs aceitos pelo navegador.
 

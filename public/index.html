@@ -54,7 +54,7 @@ input:focus,textarea:focus{border-color:#31aeb4;box-shadow:0 0 0 3px #31aeb422}
 <div class="field"><label for="motivation">Motivação da Solicitação <b class="star">*</b></label><select id="motivation" required><option value="">Selecione a motivação</option><option>Redução de custo</option><option>Aumento de receita</option><option>Redução de erros operacionais</option><option>Melhoria na experiência do usuário</option><option>Atendimento a exigências regulatórias</option><option>Outras [Descreva abaixo]</option></select></div>
 <div class="field" id="otherMotivationField" hidden><label for="otherMotivation">Outra Motivação <span class="hint">se aplicável</span></label><input id="otherMotivation" placeholder="Preencha se marcou “Outras”"></div>
 <div class="field full"><label for="urgency">Urgência <b class="star">*</b></label><select id="urgency" required><option value="">Selecione a urgência</option><option>Crítico (Impacto severo no funcionamento do hospital (paralisação, erro grave))</option><option>Alto (Impacto grande, mas não impede totalmente as operações)</option><option>Médio (Melhoria importante, mas não urgente)</option><option>Baixo (Melhoria pequena ou ajuste estético)</option></select></div></div>
-<div class="foot"><span class="hint">Rascunho salvo neste navegador.</span><div class="actions"><button class="btn soft" id="clear">Apagar tudo</button><button class="btn primary" id="copy">Copiar Markdown</button></div></div></section>
+<div class="foot"><span class="hint">Rascunho salvo neste navegador.</span><div class="actions"><button class="btn soft" id="clear">Apagar tudo</button></div></div></section>
 <aside class="side"><div class="card sidebox"><h3>Pronto para abrir?</h3><div class="sub" id="progressText">Preencha os campos obrigatórios</div><div class="bar"><div id="progressBar"></div></div><div class="list" id="checklist"></div></div>
 <div class="note"><b>🔒 Proteja os dados</b>Não informe nomes, documentos, prontuários, imagens ou dados identificáveis de pacientes. Prefira cenários fictícios ou anonimizados.</div>
 <div class="github"><div class="gh-title">⌘ &nbsp;Criar issue no GitHub</div>
@@ -470,11 +470,6 @@ function markdown(){
   function value(id){return ($(id).value.trim().replace(/^([\t ]*)•[\t ]+/gm,"$1- ")||"—")+(fieldAttachments[id]&&fieldAttachments[id].length?"\n\n"+fieldAttachments[id].map(function(item){return item.markdown}).join("\n\n"):"")}
   return ["## Solicitante\n"+value("requester"),"## Data\n"+value("date"),"## Unidades impactadas\n"+value("units"),"## É geral, ou pontual\n"+value("frequency"),"## Qual problema essa solicitação resolve?\n"+value("problem"),"## Descrição da Solicitação\n"+value("description"),"## Outros módulos/relatórios afetados\n"+value("impacts"),"## Como está sendo feito hoje\n"+value("today"),"## Impacto da Não Implementação\n"+value("nonimplementation"),"## Motivação da Solicitação\n"+value("motivation"),"## Outra Motivação\n"+value("otherMotivation"),"## Urgência\n"+value("urgency")].join("\n\n")
 }
-$("copy").addEventListener("click",async function(){
-  if(!$("title").value.trim()){toast("Informe um título antes de copiar.");$("title").focus();return}
-  try{await navigator.clipboard.writeText(markdown());toast("Markdown copiado.")}
-  catch(e){const area=document.createElement("textarea");area.value=markdown();document.body.appendChild(area);area.select();document.execCommand("copy");area.remove();toast("Markdown copiado.")}
-});
 $("clear").addEventListener("click",function(){
   if(!confirm("Apagar o relato, todos os campos e as seleções deste rascunho? A conexão com o GitHub será mantida."))return;
   if(attachmentUploads||$("organize").disabled){toast("Aguarde a geração da IA ou o envio dos anexos antes de limpar.");return}
