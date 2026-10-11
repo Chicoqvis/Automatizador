@@ -71,3 +71,11 @@ test('aprovações incluem todos os autores e publicam fases antes da última p�
  const result=await loadProcesses('workspace',request,async()=>{},{approvals:true,onProgress:data=>progress.push(data)});
  assert.deepEqual(calls,['backlog.list','process.approvalList','process.lifecycle.phaseSummaries','process.approvalList','process.lifecycle.phaseSummaries']);assert.equal(progress[1].items.length,50);assert.equal(progress[1].partial,true);assert.equal(progress[1].items[0].process.currentPhase,'business_approved');assert.equal(result.partial,false);assert.deepEqual(result.items.filter(x=>isBusinessApproval(x.process)).map(x=>x.author),['Chicoqvis','other']);
 });
+test('fases puladas não contam como pendentes e fases do backlog dispensam outra consulta',async()=>{
+ const calls=[],backlog=[{issueId:'pending',number:1,title:'Pendente',state:'open',currentPhase:'business_approved',phaseStatus:'pending'},{issueId:'skipped',number:2,title:'Pulada',state:'open',currentPhase:'business_approved',phaseStatus:'skipped'}];
+ const result=await loadProcesses('workspace',async action=>{calls.push(action);return {payload:[{result:{data:action==='backlog.list'?backlog:{total:2,issues:backlog.map(x=>({id:x.issueId,number:x.number,title:x.title,state:x.state,author:'other'}))}}}]}},async()=>{},{approvals:true});
+ assert.deepEqual(calls,['backlog.list','process.approvalList']);assert.deepEqual(result.items.filter(x=>isBusinessApproval(x.process)).map(x=>x.id),['pending']);
+});
+test('referência para responder usa issue.detail somente por GET e valida o ID',async()=>{
+ const oldFetch=globalThis.fetch,oldLocation=globalThis.location,calls=[];try{globalThis.location={origin:'chrome-extension://test'};globalThis.fetch=async(url,options)=>{calls.push({url:new URL(url),options});return Response.json([{result:{data:{id:'issue-a'}}}])};await pageRequest('issue.detail','workspace','issue-a');assert.deepEqual(JSON.parse(calls[0].url.searchParams.get('input')),{'0':{organizationId:'workspace',issueId:'issue-a'}});assert.equal(calls[0].options.method,undefined);assert((await pageRequest('issue.detail','workspace','../other')).error);assert.equal(calls.length,1)}finally{globalThis.fetch=oldFetch;globalThis.location=oldLocation}
+});

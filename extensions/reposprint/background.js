@@ -1,10 +1,12 @@
-import {loadProcesses,loadIssueProcess} from './process.js';
+import {loadProcesses,loadIssueProcess,processRead} from './process.js';
 let processCache=null;const processLoads=new Map();
 async function publishProgress(data){const tabs=await chrome.tabs.query({url:"https://automacao-issues-ai.automacao-issue-chico.workers.dev/*"});await Promise.allSettled(tabs.map(tab=>chrome.tabs.sendMessage(tab.id,{type:"reposprint-process-progress",data})));}
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type!=='reposprint-process'||new URL(sender.url||'https://invalid').origin!=='https://automacao-issues-ai.automacao-issue-chico.workers.dev')return;
  (async()=>{const saved=await chrome.storage.local.get(['reposprintWorkspace','reposprintProcessCache','reposprintIssueCache','reposprintApprovalCache','reposprintProcessProgress']),workspace=saved.reposprintWorkspace||'SxoNSBNfOj5hhl6dw2UmKAgFUqKdF33y';
 
+
+ if(message.scope==='reference'){if(typeof message.issueId!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(message.issueId))throw Error('Issue inválida.');const issue=await processRead(workspace,'issue.detail',message.issueId,undefined,undefined,true),url=new URL(issue.githubUrl||''),match=url.pathname.match(/^\/([-a-zA-Z0-9_.]+\/[-a-zA-Z0-9_.]+)\/issues\/(\d+)$/);if(issue.id!==message.issueId||url.origin!=='https://github.com'||!match||Number(match[2])!==issue.number)throw Error('Não foi possível confirmar o repositório da task.');return {repository:match[1],number:issue.number,title:issue.title,url:url.href}}
  if(message.cacheOnly)return {cached:true,workspace,snapshot:saved.reposprintProcessCache?.workspace===workspace?saved.reposprintProcessCache:null,approvals:saved.reposprintApprovalCache?.workspace===workspace?saved.reposprintApprovalCache:null,progress:saved.reposprintProcessProgress?.workspace===workspace?saved.reposprintProcessProgress:null,issues:Object.values(saved.reposprintIssueCache||{}).filter(x=>x.workspace===workspace)};
  if(message.reference){const ref=message.reference;if(!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(ref.repository)||!Number.isSafeInteger(ref.number)||ref.number<1)throw Error('Issue inválida.');
  const key=workspace+'/'+ref.repository.toLowerCase()+'#'+ref.number,cache=saved.reposprintIssueCache||{},cached=cache[key],full=processCache?.workspace===workspace?processCache:saved.reposprintProcessCache?.workspace===workspace?saved.reposprintProcessCache:null;
@@ -16,8 +18,8 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  }
 
  const approvals=message.scope==='approvals',cache=approvals?saved.reposprintApprovalCache:(processCache??saved.reposprintProcessCache),key=workspace+'/'+(approvals?'approvals':'workspace');
- if(cache?.workspace===workspace&&!cache.partial&&Date.now()-cache.checkedAt<180000&&(!approvals||cache.version==='0.4.4'))return cache;
- if(!processLoads.has(key)){const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);const promise=loadProcesses(workspace,undefined,undefined,{approvals,onProgress:async data=>{await chrome.storage.local.set({reposprintProcessProgress:data});await publishProgress(data)}}).then(async data=>{if(!approvals)processCache=data;await chrome.storage.local.set(approvals?{reposprintApprovalCache:{...data,version:'0.4.4'}}:{reposprintProcessCache:data});return data}).finally(()=>{clearInterval(keepAlive);processLoads.delete(key)});processLoads.set(key,promise)}
+ if(cache?.workspace===workspace&&!cache.partial&&Date.now()-cache.checkedAt<180000&&(!approvals||cache.version==='0.4.5'))return cache;
+ if(!processLoads.has(key)){const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);const promise=loadProcesses(workspace,undefined,undefined,{approvals,onProgress:async data=>{await chrome.storage.local.set({reposprintProcessProgress:data});await publishProgress(data)}}).then(async data=>{if(!approvals)processCache=data;await chrome.storage.local.set(approvals?{reposprintApprovalCache:{...data,version:'0.4.5'}}:{reposprintProcessCache:data});return data}).finally(()=>{clearInterval(keepAlive);processLoads.delete(key)});processLoads.set(key,promise)}
  return processLoads.get(key);
 
  })().then(data=>reply({data}),error=>reply({error:error.message,retryAt:error.retryAt}));return true;
