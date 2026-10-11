@@ -35,7 +35,7 @@ const commentView=comment=>({id:comment.id,body:String(comment.body||'').replace
 export async function listIssueComments(entry,connection,api,page=1,since=''){
   if(!Number.isSafeInteger(page)||page<1||page>1000)throw workflowError('Página de comentários inválida.');
   const response=await api(endpoint(entry,connection)+`?per_page=100&page=${page}`+(since?'&since='+encodeURIComponent(since):''),connection.token,{signal:AbortSignal.timeout(15000)});if(!response.ok)throw workflowError('Não foi possível consultar os comentários no GitHub.',502);
-  const raw=await response.json();if(!Array.isArray(raw))throw workflowError('GitHub não retornou comentários válidos.',502);return {raw,comments:raw.map(commentView),hasMore:raw.length===100};
+  const raw=await response.json();if(!Array.isArray(raw))throw workflowError('GitHub não retornou comentários válidos.',502);return {raw,comments:await Promise.all(raw.map(async x=>({...commentView(x),revision:await labelsRevision([x.body||''])}))),hasMore:raw.length===100};
 }
 export async function sendIssueComment(entry,connection,body,api,store){
   const text=typeof body.body==='string'?body.body.trim():'';if(!text||text.length>20000)throw workflowError('Escreva um comentário de até 20.000 caracteres.');
@@ -46,4 +46,12 @@ export async function sendIssueComment(entry,connection,body,api,store){
     if(!response.ok)throw Object.assign(workflowError('GitHub não confirmou o comentário. Seu texto foi preservado.',502),{creationRejected:response.status>=400&&response.status<500});
     const result=commentView(await response.json());await operation._onCreated(result);return result;
   },async(id,started)=>{const marker='<!-- automatizador-comment:'+id+' -->';for(let page=1;page<=10;page++){const data=await listIssueComments(entry,connection,api,page,new Date(started-60000).toISOString());const found=data.raw.find(x=>String(x.body).includes(marker));if(found)return commentView(found);if(!data.hasMore)break}return null});
+}
+
+export async function changeIssueComment(entry,connection,body,method,api){
+ if(!Number.isSafeInteger(body.id)||body.id<1||!['PATCH','DELETE'].includes(method))throw workflowError('Comentário inválido.');endpoint(entry,connection);const path='/repos/'+connection.owner+'/'+connection.repo+'/issues/comments/'+body.id;
+ const response=await api(path,connection.token,{signal:AbortSignal.timeout(15000)});if(response.status===404&&method==='DELETE')return {deleted:true};if(!response.ok)throw workflowError('Não foi possível consultar o comentário. Confira seu acesso ao GitHub.',502);const current=await response.json();if(String(current.issue_url||'').toLowerCase()!=='https://api.github.com/repos/'+entry.repository.toLowerCase()+'/issues/'+entry.number)throw workflowError('O comentário não pertence a esta issue.');
+ const text=typeof body.body==='string'?body.body.trim():'';if(method==='PATCH'&&(!text||text.length>20000))throw workflowError('Escreva um comentário de até 20.000 caracteres.');if(method==='PATCH'&&commentView(current).body.trim()===text)return {comment:commentView(current)};
+ if(body.revision!==await labelsRevision([current.body||'']))throw workflowError('Este comentário mudou no GitHub. Atualize a conversa antes de editar ou excluir.',409);
+ const markers=String(current.body||'').match(/<!-- automatizador-comment:[a-f0-9-]+ -->/g)||[];const changed=await api(path,connection.token,{method,headers:{'Content-Type':'application/json'},...(method==='PATCH'?{body:JSON.stringify({body:text+(markers.length?'\n'+markers.join('\n'):'')})}:{}),signal:AbortSignal.timeout(30000)});if(!changed.ok)throw workflowError(changed.status===403?'Seu acesso ao GitHub não permite editar ou excluir este comentário.':'O GitHub não confirmou a alteração. Atualize a conversa e tente novamente.',changed.status===403?403:502);return method==='DELETE'?{deleted:true}:{comment:commentView(await changed.json())};
 }

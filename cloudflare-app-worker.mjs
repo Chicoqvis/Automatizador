@@ -6,7 +6,7 @@ import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mj
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
 import { historyStatusTargets, refreshIssueStates } from './history-status.mjs';
 import { issueReference, readEditableIssue, updateExistingIssue, revisedMemoryContent } from './issue-editor.mjs';
-import { labelsRevision, setIssueLabels, projectSelections, addIssueProjects, listIssueComments, sendIssueComment } from './github-issue-actions.mjs';
+import { labelsRevision, setIssueLabels, projectSelections, addIssueProjects, listIssueComments, sendIssueComment, changeIssueComment } from './github-issue-actions.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources, memorySearch } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
@@ -406,6 +406,7 @@ async function route(request, env) {
  }));
     if(action[1]==='labels'&&method==='GET'){const issue=await readEditableIssue(ref,connection,githubApi);return json({labels:issue.labels,labelsRevision:await labelsRevision(issue.labels)})}
     if(action[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(request),githubApi,await githubOptions(env,userId));let warning='';try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.labels',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(result.labels),userId,ref.repository,ref.number).run()}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return json({...result,warning})}
+    if(action[1]==='comments'&&['PATCH','DELETE'].includes(method)){await readEditableIssue(ref,connection,githubApi);return json(await changeIssueComment(ref,connection,await readBody(request),method,githubApi))}
     if(action[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));return json({comments:data.comments,hasMore:data.hasMore})}return json({comment:await sendIssueComment(ref,connection,await readBody(request),githubApi,d1OperationStore(env.DB,userId))},201)}
     if(action[1]==='projects'&&method==='POST'){const body=await readBody(request),issue=await readEditableIssue(ref,connection,githubApi),projects=await addIssueProjects(connection,issue.nodeId,body,await githubOptions(env,userId),githubGraphql);let warning='';try{const previous=JSON.parse(row.entry).projects||[],ids=new Set(projects.map(p=>p.id)),merged=[...previous.filter(p=>!ids.has(p.id)),...projects];await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.projects',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(merged),userId,ref.repository,ref.number).run()}catch{warning='Projetos processados no GitHub, mas o histórico não pôde ser sincronizado.'}return json({projects,warning})}
     throw fail('Operação não encontrada.',404);
