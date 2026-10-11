@@ -1,3 +1,4 @@
+import {accountActivities} from './account-activities.mjs';
 import {preferenceRepository,projectPreferenceBody,getProjectPreferences,saveProjectPreferences} from './project-preferences.mjs';
 import {githubAccount,verifyCommentAccount} from './github-account.mjs';
 import {syncNotifications,d1Notifications,notificationReadIds} from './account-notifications.mjs';
@@ -399,6 +400,7 @@ async function route(request, env) {
     await env.DB.prepare('DELETE FROM account_memory WHERE user_id=? AND repository=? AND number=?').bind(userId,repository,number).run();return json({ok:true});
   }
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
+  if(path==='/api/activities'&&method==='GET'){const [history,operations,mentions]=await Promise.all([env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all(),env.DB.prepare("SELECT state,result,started_at FROM issue_operations WHERE user_id=? AND state='done' AND json_extract(result,'$.url') LIKE '%#issuecomment-%' ORDER BY started_at DESC LIMIT 500").bind(userId).all(),d1Notifications(env.DB,userId).pendingList()]);return json({items:accountActivities(history.results.map(x=>JSON.parse(x.entry)),operations.results,mentions)})}
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
   const action=path.match(/^\/api\/history\/(labels|comments|projects|comment-draft)$/);
   if(action){
@@ -564,7 +566,7 @@ async function route(request, env) {
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
-  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;

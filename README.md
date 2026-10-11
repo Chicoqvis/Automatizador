@@ -242,3 +242,9 @@ Minhas pendências agrupa as menções por issue. Ver menções expande os comen
 As imagens nos anexos, comentários e prévia abrem em um modal interno com zoom, ajuste à tela e tamanho original. Enter também abre a imagem; Esc fecha o visualizador.
 
 Aplique a migração 0011_project_visibility.sql antes de publicar. Os projetos ocultos agora são salvos por conta e repositório no D1, permitindo usar a mesma preferência em outros dispositivos. Preferências antigas deste navegador são importadas quando ainda não há uma preferência da conta. Alterações simultâneas são detectadas e exigem atualizar a lista antes de salvar novamente. Projetos selecionados permanecem visíveis até serem desmarcados. No modo local, as preferências ficam em data/project-preferences.json.
+
+## Minhas atividades
+
+O botão Minhas atividades abre um modal, sem painel permanente na tela. GET /api/activities exige sessão e reúne apenas dados da conta: até 500 issues do histórico, 500 comentários confirmados pela ferramenta e 500 menções (priorizando pendentes). Os comentários são recuperados dos registros de envio existentes, inclusive envios anteriores, sem consultar o GitHub ou consumir IA. O texto reflete o envio registrado; edições ou exclusões posteriores no GitHub não alteram esse registro. Issues importadas também integram o histórico apresentado. Não requer migração.
+
+O painel carrega ao abrir e ao clicar Atualizar. Permite pesquisar título, número e texto, filtrar tipo, repositório e período (datas locais), e abrir a issue ou o comentário no GitHub. Exibe 50 registros por vez com Mostrar mais, do mais recente ao mais antigo. Fechar ou Esc retorna à tela sem alterar o formulário.
