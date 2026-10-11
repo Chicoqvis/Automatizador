@@ -1,3 +1,4 @@
+import {githubAccount,verifyCommentAccount} from './github-account.mjs';
 import {syncNotifications,d1Notifications,notificationReadIds} from './account-notifications.mjs';
 import {suggestComment} from './comment-ai.mjs';
 import { commentNotifications } from './comment-notifications.mjs';
@@ -406,8 +407,8 @@ async function route(request, env) {
  }));
     if(action[1]==='labels'&&method==='GET'){const issue=await readEditableIssue(ref,connection,githubApi);return json({labels:issue.labels,labelsRevision:await labelsRevision(issue.labels)})}
     if(action[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(request),githubApi,await githubOptions(env,userId));let warning='';try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.labels',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(result.labels),userId,ref.repository,ref.number).run()}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return json({...result,warning})}
-    if(action[1]==='comments'&&['PATCH','DELETE'].includes(method)){await readEditableIssue(ref,connection,githubApi);return json(await changeIssueComment(ref,connection,await readBody(request),method,githubApi))}
-    if(action[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));const focus=url.searchParams.get('focus');return json({comments:data.comments,hasMore:data.hasMore,...(focus?{focusComment:await readIssueComment(ref,connection,Number(focus),githubApi)}:{})})}return json({comment:await sendIssueComment(ref,connection,await readBody(request),githubApi,d1OperationStore(env.DB,userId))},201)}
+    if(action[1]==='comments'&&['PATCH','DELETE'].includes(method)){await readEditableIssue(ref,connection,githubApi);const body=await readBody(request);await verifyCommentAccount(body,connection,githubApi);return json(await changeIssueComment(ref,connection,body,method,githubApi))}
+    if(action[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));const focus=url.searchParams.get('focus');return json({comments:data.comments,hasMore:data.hasMore,...(focus?{focusComment:await readIssueComment(ref,connection,Number(focus),githubApi)}:{})})}const body=await readBody(request);await verifyCommentAccount(body,connection,githubApi);return json({comment:await sendIssueComment(ref,connection,body,githubApi,d1OperationStore(env.DB,userId))},201)}
     if(action[1]==='projects'&&method==='POST'){const body=await readBody(request),issue=await readEditableIssue(ref,connection,githubApi),projects=await addIssueProjects(connection,issue.nodeId,body,await githubOptions(env,userId),githubGraphql);let warning='';try{const previous=JSON.parse(row.entry).projects||[],ids=new Set(projects.map(p=>p.id)),merged=[...previous.filter(p=>!ids.has(p.id)),...projects];await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.projects',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(merged),userId,ref.repository,ref.number).run()}catch{warning='Projetos processados no GitHub, mas o histórico não pôde ser sincronizado.'}return json({projects,warning})}
     throw fail('Operação não encontrada.',404);
   }
@@ -519,6 +520,9 @@ async function route(request, env) {
     const updated = await env.DB.prepare("SELECT id,username,role,active,created_at FROM users WHERE id=?").bind(target.id).first();
     return json({ user: safeUser(updated) });
   }
+  if(path==='/api/github/account'&&method==='GET'){const connection=await githubConnection(env,userId);return json({githubLogin:await githubAccount(connection,githubApi,url.searchParams.get('repository')||'')})}
+ if(path==='/api/pending-mentions'&&method==='GET'){const store=d1Notifications(env.DB,userId);return json({items:await store.pendingList(),count:await store.pendingCount()})}
+ if(path==='/api/pending-mentions'&&method==='PATCH'){const body=await readBody(request),ids=notificationReadIds({ids:[body]});if(typeof body.resolved!=='boolean')throw fail('Estado de pendência inválido.');await d1Notifications(env.DB,userId).resolve(ids[0],body.resolved);return json({ok:true})}
   if(path==='/api/notifications'&&method==='GET'){
  const store=d1Notifications(env.DB,userId),{results:repos}=await env.DB.prepare('SELECT * FROM saved_repositories WHERE user_id=?').bind(userId).all(),{results:history}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=?').bind(userId).all();return json(await syncNotifications(repos.map(x=>x.repository),history.map(x=>JSON.parse(x.entry)),store,async repository=>{const row=repos.find(x=>x.repository===repository),token=row.github_user?(await githubIdentity(env,userId))?.token:await decryptSecret(row.token_cipher,env);if(!token)throw fail('Autorize seu GitHub novamente.',401);return {owner:row.owner,repo:row.repo,token}},githubApi));
  }
@@ -556,7 +560,7 @@ async function route(request, env) {
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
-  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;
