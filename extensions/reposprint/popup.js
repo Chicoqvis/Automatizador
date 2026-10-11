@@ -19,3 +19,5 @@ $('searchForm').addEventListener('submit',async event=>{event.preventDefault();i
 loadTabs().catch(()=>status('Não foi possível localizar as abas do RepoSprint. Feche e reabra a extensão.'));
 
 document.getElementById('prioritize').addEventListener('click',()=>chrome.windows.create({url:chrome.runtime.getURL('backlog.html'),type:'popup',width:1200,height:850}));
+
+$('refreshWorkspaces').hidden=true;setInterval(()=>{if(!document.hidden&&!busy&&!$('results').children.length)loadTabs().catch(()=>{})},60000);window.addEventListener('focus',()=>{if(!busy&&!$('results').children.length)loadTabs().catch(()=>{})});

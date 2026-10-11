@@ -20,3 +20,5 @@ async function changeCard(kind,item,target){
  const confirmed=backlogRows(await api('backlog.list')),found=confirmed.find(x=>x.issueId===item.issueId);if(kind==='move'?found?.sprintTarget!==target:!!found)throw Error('O resultado não foi confirmado na lista. Confira o RepoSprint antes de repetir.');baseline=confirmed;rows=confirmed.slice();$('status').textContent=kind==='move'?'Card movido para '+buckets[target]+'.':'Card removido do backlog. A issue foi mantida no GitHub.';
  }catch(error){$('status').textContent=error.message}finally{busy=false;render()}
 }
+
+$('load').hidden=true;let lastAuto=Date.now();async function autoLoad(){if(document.hidden||!navigator.onLine||busy||dragged||changed()||Date.now()-lastAuto<60000||document.activeElement===$('workspace')||document.querySelector('dialog[open],details[open]'))return;lastAuto=Date.now();await load()};setInterval(autoLoad,15000);document.addEventListener('visibilitychange',autoLoad);window.addEventListener('focus',autoLoad);window.addEventListener('online',autoLoad);

@@ -34,3 +34,5 @@ A sessão e as permissões do RepoSprint continuam necessárias. Testes automati
 Movimentações consulta backlog.issueHistory e mostra autor, data e posição anterior/nova. As posições são apresentadas começando em 1. Mover para oferece os demais destinos (out, active, future) e envia backlog.setSprintTarget. Remover do backlog pede confirmação em um diálogo da extensão e envia backlog.remove, sem excluir a issue GitHub.
 
 Mover ou remover aplica imediatamente, verifica a lista antes e depois e atualiza o quadro. Ordens locais não salvas devem ser salvas ou descartadas antes dessas ações. Mudanças externas bloqueiam o envio até atualizar. Erros não são repetidos automaticamente. O histórico é carregado somente ao clicar. A confirmação do serviço e o resultado consultado determinam o sucesso; permissões e sessão continuam sendo as do RepoSprint.
+
+Versão 0.3.5: atualizações são automáticas. O backlog é conferido a cada minuto enquanto visível e sem ordem pendente, arraste ou menu aberto. Salve ou descarte para retomar. O botão Atualizar backlog não aparece mais; a escolha do workspace também carrega os dados automaticamente.
