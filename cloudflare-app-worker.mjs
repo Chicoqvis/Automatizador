@@ -526,6 +526,7 @@ async function route(request, env) {
   if(path==='/api/notifications'&&method==='GET'){
  const store=d1Notifications(env.DB,userId),{results:repos}=await env.DB.prepare('SELECT * FROM saved_repositories WHERE user_id=?').bind(userId).all(),{results:history}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=?').bind(userId).all();return json(await syncNotifications(repos.map(x=>x.repository),history.map(x=>JSON.parse(x.entry)),store,async repository=>{const row=repos.find(x=>x.repository===repository),token=row.github_user?(await githubIdentity(env,userId))?.token:await decryptSecret(row.token_cipher,env);if(!token)throw fail('Autorize seu GitHub novamente.',401);return {owner:row.owner,repo:row.repo,token}},githubApi));
  }
+ if(path==='/api/notifications'&&method==='DELETE')return json({clearedAt:await d1Notifications(env.DB,userId).clear()});
  if(path==='/api/notifications/read'&&method==='PATCH'){await d1Notifications(env.DB,userId).read(notificationReadIds(await readBody(request)));return json({ok:true})}
   if(path==='/api/notifications/comments'&&method==='GET'){
  const repository=String(url.searchParams.get('repository')||'').toLowerCase(),row=await env.DB.prepare('SELECT * FROM saved_repositories WHERE user_id=? AND repository=?').bind(userId,repository).first();if(!row)throw fail('Repositório não salvo nesta conta.',404);
