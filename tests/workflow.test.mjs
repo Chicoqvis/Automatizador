@@ -52,7 +52,7 @@ test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns'
 
 test('rascunhos são isolados por conta, persistem anexos e impedem edição com revisão antiga',async()=>{
   const db=new DatabaseSync(':memory:');
-  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql','0006_issue_operations.sql','0007_daily_issue_count.sql','0008_saved_repositories.sql','0009_notifications_memory_controls.sql','0010_pending_mentions.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql','0006_issue_operations.sql','0007_daily_issue_count.sql','0008_saved_repositories.sql','0009_notifications_memory_controls.sql','0010_pending_mentions.sql','0011_project_visibility.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
   for(const id of ['alice','bob']){
     db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?,?,?)').run(id,id,id,'user',1,Date.now(),'salt','hash');
     db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(id).digest('hex'),id,Date.now()+60000);
@@ -65,6 +65,8 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   }
 
  const beforeRenew=await request('/api/auth/me'),bobExpiry=(await request('/api/auth/me','GET',undefined,'bob')).data.expiresAt;assert(beforeRenew.data.expiresAt>Date.now());const renewResponse=await worker.fetch(new Request('https://test.example/api/auth/renew',{method:'POST',headers:{Cookie:'automacao_session=alice',Origin:'https://test.example','Content-Type':'application/json'},body:'{}'}),env);assert.equal(renewResponse.status,200);assert(renewResponse.headers.get('set-cookie').includes('Max-Age=43200'));assert(renewResponse.headers.get('set-cookie').includes('HttpOnly'));const renewed=await renewResponse.json();assert(renewed.expiresAt-Date.now()>43190000);assert.equal((await request('/api/auth/me','GET',undefined,'bob')).data.expiresAt,bobExpiry);db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update('expired').digest('hex'),'alice',Date.now()-1);assert.equal((await request('/api/auth/renew','POST',{},'expired')).status,401);
+
+ const preferencePath='/api/project-preferences?repository=owner%2Frepo';assert.equal((await request(preferencePath)).data.exists,false);assert.equal((await request(preferencePath,'PUT',{hiddenIds:['p1'],revision:0})).status,200);assert.deepEqual((await request(preferencePath)).data.hiddenIds,['p1']);assert.deepEqual((await request(preferencePath,'GET',undefined,'bob')).data.hiddenIds,[]);assert.equal((await request(preferencePath,'PUT',{hiddenIds:[],revision:0})).status,409);assert.equal((await request(preferencePath,'PUT',{hiddenIds:[],revision:1})).status,200);assert.equal((await request('/api/project-preferences?repository=owner%2Fother')).data.exists,false);
   assert.equal((await request('/api/admin/quotas')).status,403);
   assert.equal((await request('/api/admin/usage')).status,403);
   assert.equal((await request('/api/admin/quotas','GET',undefined,'unknown')).status,401);

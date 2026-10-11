@@ -234,3 +234,11 @@ GET /api/auth/me informa expiresAt e o horário do servidor. Nos dez minutos fin
 
 Se o acesso já expirou, Entrar novamente solicita a senha em um modal do site para a mesma conta e faz login sem recarregar, mantendo formulário, comentários e arquivos ainda em memória na página. A senha não é salva no navegador. Fechar ou recarregar continua sujeito às regras dos rascunhos e anexos existentes. A expiração refere-se ao login da ferramenta, sem alterar a validade do token GitHub. A interface usa a hora do servidor, confere o estado a cada cinco minutos enquanto visível, a cada minuto nos dez minutos finais e ao voltar à aba. As consultas consomem requisições da ferramenta. Não há nova migração de banco.
 Ocultar ou mostrar projetos abre Projetos visíveis. Desmarque os projetos pouco usados e clique em Salvar preferências; Mostrar todos permite recuperá-los. A preferência fica no navegador, por conta e repositório, e filtra o projeto principal e as listas de múltiplos projetos. Projetos já selecionados permanecem visíveis até serem desmarcados, inclusive ao restaurar um rascunho. Não altera nem remove projetos no GitHub.
+
+## Menções agrupadas, imagens ampliadas e projetos por conta
+
+Minhas pendências agrupa as menções por issue. Ver menções expande os comentários; cada menção pode ser resolvida ou reaberta individualmente, sem fechar a issue.
+
+As imagens nos anexos, comentários e prévia abrem em um modal interno com zoom, ajuste à tela e tamanho original. Enter também abre a imagem; Esc fecha o visualizador.
+
+Aplique a migração 0011_project_visibility.sql antes de publicar. Os projetos ocultos agora são salvos por conta e repositório no D1, permitindo usar a mesma preferência em outros dispositivos. Preferências antigas deste navegador são importadas quando ainda não há uma preferência da conta. Alterações simultâneas são detectadas e exigem atualizar a lista antes de salvar novamente. Projetos selecionados permanecem visíveis até serem desmarcados. No modo local, as preferências ficam em data/project-preferences.json.

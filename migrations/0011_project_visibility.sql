@@ -1,0 +1,1 @@
+CREATE TABLE project_visibility(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,repository TEXT NOT NULL,hidden_ids TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(user_id,repository));
