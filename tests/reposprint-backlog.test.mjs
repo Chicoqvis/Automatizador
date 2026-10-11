@@ -15,3 +15,12 @@ test('consulta usa GET e reordenação envia todos os IDs por POST com campos ob
  await pageRequest('backlog.reorder','workspace',['c','b','a','d']);assert.equal(calls[1].options.method,'POST');assert.deepEqual(JSON.parse(calls[1].options.body),{'0':{organizationId:'workspace',orderedIssueIds:['c','b','a','d']}});assert.equal(calls[1].options.credentials,'include');assert((await pageRequest('backlog.reorder','workspace',['a','a'])).error);assert.equal(calls.length,2);
  }finally{globalThis.fetch=oldFetch;globalThis.location=oldLocation}
 });
+test('ações de card usam IDs individuais, destino validado e histórico somente por GET',async()=>{
+ const oldFetch=globalThis.fetch,oldLocation=globalThis.location,calls=[];
+ try{globalThis.location={origin:'chrome-extension://test'};globalThis.fetch=async(url,options)=>{calls.push({url:new URL(url),options});return Response.json([{result:{data:{success:true}}}])};
+ await pageRequest('backlog.setSprintTarget','workspace',{issueId:'a',sprintTarget:'active'});assert.deepEqual(JSON.parse(calls[0].options.body),{'0':{organizationId:'workspace',issueId:'a',sprintTarget:'active'}});
+ await pageRequest('backlog.remove','workspace','a');assert.deepEqual(JSON.parse(calls[1].options.body),{'0':{organizationId:'workspace',issueId:'a'}});
+ await pageRequest('backlog.issueHistory','workspace','a');assert(!calls[2].options.method);assert.deepEqual(JSON.parse(calls[2].url.searchParams.get('input')),{'0':{organizationId:'workspace',issueId:'a'}});
+ assert((await pageRequest('backlog.setSprintTarget','workspace',{issueId:'a',sprintTarget:'wrong'})).error);assert((await pageRequest('backlog.remove','workspace','../a')).error);assert.equal(calls.length,3);
+ }finally{globalThis.fetch=oldFetch;globalThis.location=oldLocation}
+});

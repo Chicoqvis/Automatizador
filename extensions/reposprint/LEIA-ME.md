@@ -28,3 +28,9 @@ O quadro consulta backlog.list e usa sprintTarget (out, active, future) para for
 Antes de salvar, a lista, as posições e as colunas são comparadas com uma nova consulta. Se mudou, descarte e atualize. Após enviar, a ordem é consultada e conferida novamente. Não há garantia atômica contra alterações simultâneas entre consulta e envio, pois o protocolo observado não possui revisão. Em falha ou resposta perdida, confira o RepoSprint antes de repetir. Não há repetição automática.
 
 A sessão e as permissões do RepoSprint continuam necessárias. Testes automatizados utilizam API simulada; valide primeiro com uma pequena reorganização real. A ordem não altera fases, responsáveis, estados das issues ou associação a sprints.
+
+## Controles dos cards — versão 0.3.0
+
+Movimentações consulta backlog.issueHistory e mostra autor, data e posição anterior/nova. As posições são apresentadas começando em 1. Mover para oferece os demais destinos (out, active, future) e envia backlog.setSprintTarget. Remover do backlog pede confirmação em um diálogo da extensão e envia backlog.remove, sem excluir a issue GitHub.
+
+Mover ou remover aplica imediatamente, verifica a lista antes e depois e atualiza o quadro. Ordens locais não salvas devem ser salvas ou descartadas antes dessas ações. Mudanças externas bloqueiam o envio até atualizar. Erros não são repetidos automaticamente. O histórico é carregado somente ao clicar. A confirmação do serviço e o resultado consultado determinam o sucesso; permissões e sessão continuam sendo as do RepoSprint.

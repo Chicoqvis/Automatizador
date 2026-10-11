@@ -9,11 +9,15 @@ export function trpcData(payload){const result=Array.isArray(payload)?payload[0]
 // Requisição da extensão; não lê nem retorna cookies ou tokens.
 export async function pageRequest(action,workspace,value){
  if(location.origin!=='https://reposprint.com'&&!location.origin.startsWith('chrome-extension://'))return {error:'Abra esta ação pela extensão.'};
- if(!['issue.list','backlog.add','backlog.list','backlog.reorder'].includes(action)||!/^[-a-zA-Z0-9_]{1,200}$/.test(workspace))return {error:'Parâmetros inválidos.'};
+ if(!['issue.list','backlog.add','backlog.list','backlog.reorder','backlog.setSprintTarget','backlog.remove','backlog.issueHistory'].includes(action)||!/^[-a-zA-Z0-9_]{1,200}$/.test(workspace))return {error:'Parâmetros inválidos.'};
  if(action==='issue.list'&&(!Number.isSafeInteger(value)||value<1)||action==='backlog.add'&&(typeof value!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(value)))return {error:'Issue inválida.'};
  if(action==='backlog.reorder'&&(!Array.isArray(value)||value.length>5000||new Set(value).size!==value.length||value.some(id=>typeof id!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(id))))return {error:'Ordem de cards inválida.'};
+ if(['backlog.remove','backlog.issueHistory'].includes(action)&&(typeof value!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(value)))return {error:'Issue inválida.'};
+ if(action==='backlog.setSprintTarget'&&(!value||!/^[-a-zA-Z0-9_]{1,200}$/.test(value.issueId)||!['out','active','future'].includes(value.sprintTarget)))return {error:'Destino inválido.'};
  const input=action==='issue.list'?{organizationId:workspace,search:String(value),sortBy:'createdAt',sortOrder:'desc',page:1,limit:50}:action==='backlog.list'?{organizationId:workspace}:action==='backlog.reorder'?{organizationId:workspace,orderedIssueIds:value}:{organizationId:workspace,issueIds:[value]};
+ if(['backlog.remove','backlog.issueHistory'].includes(action)){delete input.issueIds;input.issueId=value}
+ if(action==='backlog.setSprintTarget'){delete input.issueIds;input.issueId=value.issueId;input.sprintTarget=value.sprintTarget}
  const url=new URL('https://api.reposprint.com/trpc/'+action);url.searchParams.set('batch','1');const options={credentials:'include',signal:AbortSignal.timeout(20000)};
- if(['issue.list','backlog.list'].includes(action))url.searchParams.set('input',JSON.stringify({'0':input}));else{options.method='POST';options.headers={'Content-Type':'application/json'};options.body=JSON.stringify({'0':input})}
+ if(['issue.list','backlog.list','backlog.issueHistory'].includes(action))url.searchParams.set('input',JSON.stringify({'0':input}));else{options.method='POST';options.headers={'Content-Type':'application/json'};options.body=JSON.stringify({'0':input})}
  try{const response=await fetch(url,options);if(response.status===401||response.status===403)return {error:'Entre novamente no RepoSprint e confira sua permissão no workspace.'};if(!response.ok)return {error:'RepoSprint retornou HTTP '+response.status+'. Confira o backlog antes de tentar novamente.'};return {payload:await response.json()}}catch{return {error:'Não foi possível confirmar a resposta. Confira o RepoSprint antes de repetir a inclusão.'}}
 }
