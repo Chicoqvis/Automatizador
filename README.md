@@ -171,7 +171,7 @@ A pesquisa em **Memória da minha conta** também consulta o conteúdo, além de
 
 O sino consulta novos comentários nas issues do histórico da conta, usando os repositórios salvos e suas credenciais autorizadas. A verificação ocorre a cada dois minutos enquanto a página estiver visível, ao voltar à página e pelo botão Atualizar. A primeira consulta estabelece o marco inicial sem alertar comentários antigos. Comentários posteriores podem ser encontrados ao reabrir o site no mesmo navegador. Repositórios sem acesso válido mostram aviso sem impedir a consulta dos demais.
 
-O contador indica avisos não lidos; abrir o link marca aquele aviso, e Marcar todas como lidas limpa o contador. A caixa guarda até 500 avisos no navegador, separados por conta. Não envia notificações com o site fechado nem sincroniza as leituras entre dispositivos. Cada ciclo faz uma consulta da lista e uma página de comentários por repositório com issues próprias; páginas adicionais continuam nas próximas verificações. As consultas consomem requisições da ferramenta e da API GitHub. Editar um comentário antigo não gera aviso de comentário novo.
+O contador indica avisos não lidos; abrir o link marca aquele aviso, e Marcar todas como lidas limpa o contador. A caixa guarda até 500 avisos na conta, com leituras sincronizadas entre dispositivos. Não envia notificações com o site fechado. Cada ciclo faz uma consulta da lista e uma página de comentários por repositório com issues próprias; páginas adicionais continuam nas próximas verificações. As consultas consomem requisições da ferramenta e da API GitHub. Editar um comentário antigo não gera aviso de comentário novo.
 
 Editar issue, Labels, Comentários e Projetos usam botões de 105 × 34 px, em quatro colunas quando houver espaço e duas no celular.
 
@@ -181,3 +181,12 @@ No histórico, abra Comentários e clique em Sugerir resposta com IA. Uma orient
 
 O contexto usa até os 50 comentários mais recentes, com até 20.000 caracteres no conjunto e 4.000 por comentário, além de até 16.000 caracteres da descrição. A interface informa quando esses limites cortam conteúdo. Imagens e vídeos não são analisados. O prompt orienta a não inventar fatos, prazos ou implementação e a pedir esclarecimento quando faltar informação. A resposta precisa ser conferida pelo usuário. A geração consome a cota normal de IA, conta no resumo de uso e mantém o aviso de cota diária esgotada. Não há nova migração de banco.
 Cada notificação também oferece Comentar para abrir a conversa dentro da ferramenta, marcar o aviso como lido e usar a sugestão de resposta com IA. Quando necessário, conecta o repositório salvo correspondente, mantendo os textos do formulário e pedindo revisão das seleções no novo destino. Operações e anexos pendentes precisam ser resolvidos antes de alternar.
+
+
+## Notificações por conta e controle de memória
+
+Aplique 0009_notifications_memory_controls.sql antes de publicar. Os avisos, suas leituras e o marco de consulta de cada repositório ficam no D1 por usuário. Novos dispositivos carregam o mesmo histórico de até 500 avisos e a mesma situação de leitura. Marcar como lida altera somente a conta autenticada. A página consulta a cada dois minutos enquanto visível; o servidor compartilha os marcos entre dispositivos e evita consultar novamente um repositório em menos de 30 segundos após uma verificação bem-sucedida. A sincronização não adiciona notificações push com a página fechada. O modo local persiste em data/notifications.json, ignorado pelo Git.
+
+O histórico sincronizado começa nos comentários posteriores à ativação desta versão em cada repositório; avisos antigos guardados apenas no navegador não são importados. Os acessos ao GitHub continuam separados por conta.
+
+Memória da minha conta mostra Ativa, Desativada e Desatualizada. Desativar/Reativar altera a disponibilidade; marcar como desatualizada/atualizada altera a validade da referência. Somente memórias ativas e atualizadas entram no contexto das próximas gerações. Ambos os estados persistem por conta e entre dispositivos. O conteúdo, a issue e o histórico são preservados; editar a issue não remove esses estados. Uma geração já iniciada pode ter carregado a referência antes da mudança.

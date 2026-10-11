@@ -52,7 +52,7 @@ test('tópicos compactados ficam em linhas separadas sem alterar hífens comuns'
 
 test('rascunhos são isolados por conta, persistem anexos e impedem edição com revisão antiga',async()=>{
   const db=new DatabaseSync(':memory:');
-  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql','0006_issue_operations.sql','0007_daily_issue_count.sql','0008_saved_repositories.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
+  for(const file of ['0001_initial.sql','0002_saved_drafts.sql','0003_issue_history.sql','0004_account_memory.sql','0005_daily_usage.sql','0006_issue_operations.sql','0007_daily_issue_count.sql','0008_saved_repositories.sql','0009_notifications_memory_controls.sql'])db.exec(readFileSync(new URL('../migrations/'+file,import.meta.url),'utf8'));
   for(const id of ['alice','bob']){
     db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?,?,?)').run(id,id,id,'user',1,Date.now(),'salt','hash');
     db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(id).digest('hex'),id,Date.now()+60000);
@@ -128,9 +128,12 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
   }finally{globalThis.fetch=originalFetch;db.prepare('DELETE FROM github_connections').run();await request('/api/history','DELETE',undefined,'bob')}
   assert.equal((await request('/api/history','DELETE')).status,200);
   assert.equal((await request('/api/history')).data.issues.length,0);
-  for(const user of ['alice','bob'])db.prepare('INSERT INTO account_memory VALUES(?,?,?,?,?,?)').run(user,'owner/repo',1,'Filtro marcação agendamento','Filtro marcação agendamento. MEMORIA_PRIVADA_'+user,Date.now());
-  db.prepare('INSERT INTO account_memory VALUES(?,?,?,?,?,?)').run('alice','owner/repo',2,'Memória antiga','Conteúdo antigo somente de Alice',Date.now());
+  for(const user of ['alice','bob'])db.prepare('INSERT INTO account_memory(user_id,repository,number,title,content,created_at) VALUES(?,?,?,?,?,?)').run(user,'owner/repo',1,'Filtro marcação agendamento','Filtro marcação agendamento. MEMORIA_PRIVADA_'+user,Date.now());
+  db.prepare('INSERT INTO account_memory(user_id,repository,number,title,content,created_at) VALUES(?,?,?,?,?,?)').run('alice','owner/repo',2,'Memória antiga','Conteúdo antigo somente de Alice',Date.now());
   const memoryPath='/api/memory/entry?repository=owner%2Frepo&number=2';
+ assert.equal((await request(memoryPath,'PATCH',{enabled:false,outdated:true},'bob')).status,404);assert.equal((await request(memoryPath,'PATCH',{enabled:false,outdated:true})).status,200);const disabled=await request(memoryPath);assert.equal(disabled.data.entry.enabled,0);assert.equal(disabled.data.entry.outdated,1);assert.equal((await request(memoryPath,'PATCH',{enabled:true,outdated:false})).status,200);
+ const {d1Notifications}=await import('../account-notifications.mjs');const aliceStore=d1Notifications(env.DB,'alice');await aliceStore.add([{id:501,repository:'owner/repo',number:42,body:'Teste',createdAt:new Date().toISOString()}]);assert.equal((await request('/api/notifications')).data.items.length,1);assert.equal((await request('/api/notifications','GET',undefined,'bob')).data.items.length,0);await request('/api/notifications/read','PATCH',{ids:[{id:501,repository:'owner/repo'}]},'bob');assert.equal((await aliceStore.list())[0].read,false);await request('/api/notifications/read','PATCH',{ids:[{id:501,repository:'owner/repo'}]});assert.equal((await request('/api/notifications')).data.items[0].read,true);
+
   assert.equal((await request('/api/memory/entries')).data.entries.length,2);
   assert.equal((await request('/api/memory/entries','GET',undefined,'bob')).data.entries.length,1);
   assert.equal((await request('/api/memory/entries?q=somente')).data.entries.length,1);
@@ -258,3 +261,5 @@ test('busca compara títulos, exclui pull requests e consulta o repositório con
  test('sugestão de comentário usa descrição e comentários recentes sem escrever no GitHub',async()=>{
  const {suggestComment}=await import('../comment-ai.mjs');let methods=[];const result=await suggestComment({repository:'owner/repo',number:42},{owner:'owner',repo:'repo',token:'token'},{instruction:'Peça um exemplo'},async(url,token,options={})=>{methods.push(options.method||'GET');return new Response(JSON.stringify(url.includes('/comments?')?[{id:1,body:'Qual unidade?',user:{login:'colega'},created_at:new Date().toISOString()}]:{number:42,title:'Filtro',body:'Todas as unidades',comments:1,labels:[],state:'open'}))},async(messages,schema)=>{const context=JSON.parse(messages[1].content);assert.equal(context.description,'Todas as unidades');assert.equal(context.comments[0].text,'Qual unidade?');assert.equal(context.instruction,'Peça um exemplo');assert(messages[0].content.includes('Não invente'));return {response:JSON.stringify({reply:'O filtro atende todas as unidades. Pode informar um exemplo?'})}});assert.equal(result.commentsUsed,1);assert.equal(result.contextLimited,false);assert(methods.every(m=>m==='GET'));assert(result.reply.includes('exemplo'));
  });
+
+ test('memória desativada ou desatualizada não participa das referências',()=>{const entry={repository:'owner/repo',number:1,title:'Filtro agenda tipo',content:'Filtro agenda tipo',created_at:Date.now()};assert.equal(selectAccountMemory('Filtro agenda tipo',[entry]).length,1);assert.equal(selectAccountMemory('Filtro agenda tipo',[{...entry,enabled:0}]).length,0);assert.equal(selectAccountMemory('Filtro agenda tipo',[{...entry,outdated:1}]).length,0)});

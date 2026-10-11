@@ -1,3 +1,4 @@
+import {syncNotifications,d1Notifications,notificationReadIds} from './account-notifications.mjs';
 import {suggestComment} from './comment-ai.mjs';
 import { commentNotifications } from './comment-notifications.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources } from "./account-memory.mjs";
@@ -557,6 +558,7 @@ function localOperationStore(userId){
 }
 function persistLocalMemory(rows){fs.mkdirSync(DATA_DIR,{recursive:true});const file=path.join(DATA_DIR,'account-memory.json');fs.writeFileSync(file+'.tmp',JSON.stringify(rows));fs.renameSync(file+'.tmp',file)}
 function saveLocalMemory(userId,result,body){const rows=localMemory().filter(row=>!(row.userId===userId&&row.repository===result.repository.toLowerCase()&&row.number===result.number));rows.push({userId,repository:result.repository.toLowerCase(),number:result.number,title:result.title,content:memoryContent(body),created_at:Date.now()});persistLocalMemory(rows)}
+function localNotifications(userId){const file=path.join(DATA_DIR,'notifications.json');const read=()=>fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):{};const write=fn=>{const all=read(),state=all[userId]||(all[userId]={cursors:{},items:[]});fn(state);fs.mkdirSync(DATA_DIR,{recursive:true});fs.writeFileSync(file+'.tmp',JSON.stringify(all));fs.renameSync(file+'.tmp',file)};return {async cursor(repo){return read()[userId]?.cursors[repo]||null},async initialize(repo,state){write(s=>{s.cursors[repo]??=state})},async advance(repo,old,next){write(s=>{if(JSON.stringify(s.cursors[repo])===JSON.stringify(old))s.cursors[repo]=next})},async add(items){write(s=>{for(const item of items)if(!s.items.some(x=>x.repository===item.repository&&x.id===item.id))s.items.push({...item,read:false});s.items.sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));s.items=s.items.slice(0,500)})},async list(){return (read()[userId]?.items||[]).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt)).slice(0,500)},async read(ids){write(s=>{for(const item of s.items)if(ids.some(x=>x.repository===item.repository&&x.id===item.id))item.read=true})}}}
 function localHistory(){const file=path.join(DATA_DIR,'issue-history.json');return fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):[]}
 function persistLocalHistory(entries){fs.mkdirSync(DATA_DIR,{recursive:true});const file=path.join(DATA_DIR,'issue-history.json');fs.writeFileSync(file+'.tmp',JSON.stringify(entries));fs.renameSync(file+'.tmp',file)}
 function addLocalHistory(userId,items){const stored=localHistory();for(const item of items){const entry=validateHistoryEntry(item);if(!stored.some(row=>row.userId===userId&&row.entry.repository===entry.repository&&row.entry.number===entry.number))stored.push({userId,entry})}persistLocalHistory(stored)}
@@ -603,12 +605,13 @@ const server = http.createServer(async (req, res) => {
     const userId = session && session.user.id;
     if(pathname==="/api/memory"&&method==="GET")return send(res,200,{count:localMemory().filter(row=>row.userId===userId).length});
     if(pathname==='/api/memory/entries'&&method==='GET')return send(res,200,{entries:searchMemoryEntries(localMemory().filter(row=>row.userId===userId),url.searchParams.get('q'))});
-    if(pathname==='/api/memory/entry'&&['GET','DELETE'].includes(method)){
+    if(pathname==='/api/memory/entry'&&['GET','DELETE','PATCH'].includes(method)){
       const repository=(url.searchParams.get('repository')||'').toLowerCase(),number=Number(url.searchParams.get('number'));
       if(!repository||!Number.isSafeInteger(number)||number<1)return send(res,400,{error:'Memória inválida.'});
       const rows=localMemory(),entry=rows.find(row=>row.userId===userId&&row.repository===repository&&row.number===number);
       if(!entry)return send(res,404,{error:'Memória não encontrada na sua conta.'});
       if(method==='GET'){const {userId:ignored,...safe}=entry;return send(res,200,{entry:safe})}
+      if(method==='PATCH'){const body=await readBody(req);if(typeof body.enabled!=='boolean'||typeof body.outdated!=='boolean')return send(res,400,{error:'Estado de memória inválido.'});entry.enabled=body.enabled?1:0;entry.outdated=body.outdated?1:0;persistLocalMemory(rows);return send(res,200,{ok:true})}
       persistLocalMemory(rows.filter(row=>row!==entry));return send(res,200,{ok:true});
     }
     if(pathname==="/api/memory"&&method==="DELETE"){persistLocalMemory(localMemory().filter(row=>row.userId!==userId));return send(res,200,{ok:true})}
@@ -723,6 +726,8 @@ const server = http.createServer(async (req, res) => {
       await saveUsers(); return send(res, 200, { user: safeUser(target) });
     }
 
+    if(pathname==='/api/notifications'&&method==='GET'){const repos=savedGithubRepositories.get(userId)||new Map();return send(res,200,await syncNotifications([...repos.keys()],localHistory().filter(x=>x.userId===userId).map(x=>x.entry),localNotifications(userId),async repo=>{const saved=repos.get(repo),identity=saved.githubUser?await ensureGithubOAuthIdentity(userId):null,token=saved.githubUser?identity?.token:saved.token;if(!token)throw workflowError('Autorize seu GitHub novamente.',401);return {...saved,token}},githubApi))}
+    if(pathname==='/api/notifications/read'&&method==='PATCH'){await localNotifications(userId).read(notificationReadIds(await readBody(req)));return send(res,200,{ok:true})}
     if(pathname==='/api/notifications/comments'&&method==='GET'){
  const repository=String(url.searchParams.get('repository')||'').toLowerCase(),saved=savedGithubRepositories.get(userId)?.get(repository);if(!saved)return send(res,404,{error:'Repositório não salvo nesta conta.'});const identity=saved.githubUser?await ensureGithubOAuthIdentity(userId):null,token=saved.githubUser?identity?.token:saved.token;if(!token)return send(res,401,{error:'Autorize seu GitHub novamente.'});return send(res,200,await commentNotifications({...saved,token},localHistory().filter(x=>x.userId===userId).map(x=>x.entry),url.searchParams,githubApi));
  }

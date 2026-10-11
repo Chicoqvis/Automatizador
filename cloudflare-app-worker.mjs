@@ -1,3 +1,4 @@
+import {syncNotifications,d1Notifications,notificationReadIds} from './account-notifications.mjs';
 import {suggestComment} from './comment-ai.mjs';
 import { commentNotifications } from './comment-notifications.mjs';
 import { dailyAiQuotaError } from "./ai-quota.mjs";
@@ -277,7 +278,7 @@ async function generateDraft(env, body, userId) {
     data_de_hoje: new Date().toISOString().slice(0, 10), tipo_solicitacao: preference || "automático",
     orientacao_do_modelo: guidance(preference), opcoes_motivacao: MOTIVATION, opcoes_urgencia: URGENCY
   };
-  let memories=[];if(userId){const connection=await env.DB.prepare("SELECT owner,repo FROM github_connections WHERE user_id=?").bind(userId).first();const {results}=await env.DB.prepare("SELECT repository,number,title,content,created_at FROM account_memory WHERE user_id=? ORDER BY created_at DESC LIMIT 250").bind(userId).all();memories=selectAccountMemory(raw+" "+(body.current?.title||""),results,connection?connection.owner+"/"+connection.repo:"")};
+  let memories=[];if(userId){const connection=await env.DB.prepare("SELECT owner,repo FROM github_connections WHERE user_id=?").bind(userId).first();const {results}=await env.DB.prepare("SELECT repository,number,title,content,created_at,enabled,outdated FROM account_memory WHERE user_id=? AND enabled=1 AND outdated=0 ORDER BY created_at DESC LIMIT 250").bind(userId).all();memories=selectAccountMemory(raw+" "+(body.current?.title||""),results,connection?connection.owner+"/"+connection.repo:"")};
   const systemPrompt = DRAFT_SYSTEM_PROMPT + fieldRefinementInstruction(body,SCHEMA.properties) + memoryInstruction(memories);
   const messages = [
     { role: "system", content: systemPrompt },
@@ -382,15 +383,16 @@ async function route(request, env) {
   if(path==="/api/memory"&&method==="GET"){const row=await env.DB.prepare("SELECT COUNT(*) AS count FROM account_memory WHERE user_id=?").bind(userId).first();return json({count:row.count})}
   if(path==='/api/memory/entries'&&method==='GET'){
     const {query,pattern}=memorySearch(url.searchParams.get('q'));
-    const {results}=await env.DB.prepare("SELECT repository,number,title,created_at,substr(content,max(1,instr(lower(content),lower(?))-60),220) AS snippet FROM account_memory WHERE user_id=? AND (title LIKE ? ESCAPE '\\' OR repository LIKE ? ESCAPE '\\' OR CAST(number AS TEXT) LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') ORDER BY created_at DESC LIMIT 500").bind(query,userId,pattern,pattern,pattern,pattern).all();
+    const {results}=await env.DB.prepare("SELECT repository,number,title,created_at,enabled,outdated,substr(content,max(1,instr(lower(content),lower(?))-60),220) AS snippet FROM account_memory WHERE user_id=? AND (title LIKE ? ESCAPE '\\' OR repository LIKE ? ESCAPE '\\' OR CAST(number AS TEXT) LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\') ORDER BY created_at DESC LIMIT 500").bind(query,userId,pattern,pattern,pattern,pattern).all();
     return json({entries:results});
   }
-  if(path==='/api/memory/entry'&&['GET','DELETE'].includes(method)){
+  if(path==='/api/memory/entry'&&['GET','DELETE','PATCH'].includes(method)){
     const repository=(url.searchParams.get('repository')||'').toLowerCase(),number=Number(url.searchParams.get('number'));
     if(!repository||!Number.isSafeInteger(number)||number<1)throw fail('Memória inválida.');
-    const entry=await env.DB.prepare('SELECT repository,number,title,content,created_at FROM account_memory WHERE user_id=? AND repository=? AND number=?').bind(userId,repository,number).first();
+    const entry=await env.DB.prepare('SELECT repository,number,title,content,created_at,enabled,outdated FROM account_memory WHERE user_id=? AND repository=? AND number=?').bind(userId,repository,number).first();
     if(!entry)throw fail('Memória não encontrada na sua conta.',404);
     if(method==='GET')return json({entry});
+    if(method==='PATCH'){const body=await readBody(request);if(typeof body.enabled!=='boolean'||typeof body.outdated!=='boolean')throw fail('Estado de memória inválido.');await env.DB.prepare('UPDATE account_memory SET enabled=?,outdated=? WHERE user_id=? AND repository=? AND number=?').bind(body.enabled?1:0,body.outdated?1:0,userId,repository,number).run();return json({ok:true})}
     await env.DB.prepare('DELETE FROM account_memory WHERE user_id=? AND repository=? AND number=?').bind(userId,repository,number).run();return json({ok:true});
   }
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
@@ -516,6 +518,10 @@ async function route(request, env) {
     const updated = await env.DB.prepare("SELECT id,username,role,active,created_at FROM users WHERE id=?").bind(target.id).first();
     return json({ user: safeUser(updated) });
   }
+  if(path==='/api/notifications'&&method==='GET'){
+ const store=d1Notifications(env.DB,userId),{results:repos}=await env.DB.prepare('SELECT * FROM saved_repositories WHERE user_id=?').bind(userId).all(),{results:history}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=?').bind(userId).all();return json(await syncNotifications(repos.map(x=>x.repository),history.map(x=>JSON.parse(x.entry)),store,async repository=>{const row=repos.find(x=>x.repository===repository),token=row.github_user?(await githubIdentity(env,userId))?.token:await decryptSecret(row.token_cipher,env);if(!token)throw fail('Autorize seu GitHub novamente.',401);return {owner:row.owner,repo:row.repo,token}},githubApi));
+ }
+ if(path==='/api/notifications/read'&&method==='PATCH'){await d1Notifications(env.DB,userId).read(notificationReadIds(await readBody(request)));return json({ok:true})}
   if(path==='/api/notifications/comments'&&method==='GET'){
  const repository=String(url.searchParams.get('repository')||'').toLowerCase(),row=await env.DB.prepare('SELECT * FROM saved_repositories WHERE user_id=? AND repository=?').bind(userId,repository).first();if(!row)throw fail('Repositório não salvo nesta conta.',404);
  const token=row.github_user?(await githubIdentity(env,userId))?.token:await decryptSecret(row.token_cipher,env);if(!token)throw fail('Autorize seu GitHub novamente.',401);
