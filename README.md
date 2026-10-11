@@ -190,3 +190,9 @@ Aplique 0009_notifications_memory_controls.sql antes de publicar. Os avisos, sua
 O histórico sincronizado começa nos comentários posteriores à ativação desta versão em cada repositório; avisos antigos guardados apenas no navegador não são importados. Os acessos ao GitHub continuam separados por conta.
 
 Memória da minha conta mostra Ativa, Desativada e Desatualizada. Desativar/Reativar altera a disponibilidade; marcar como desatualizada/atualizada altera a validade da referência. Somente memórias ativas e atualizadas entram no contexto das próximas gerações. Ambos os estados persistem por conta e entre dispositivos. O conteúdo, a issue e o histórico são preservados; editar a issue não remove esses estados. Uma geração já iniciada pode ter carregado a referência antes da mudança.
+
+## Responder a um comentário específico
+
+Cada mensagem na conversa tem Responder. O botão seleciona a mensagem e solicita uma sugestão de IA focada nela, mantendo a descrição e os comentários recentes como contexto. O servidor carrega o comentário selecionado diretamente do GitHub e verifica se ele pertence à issue do histórico da conta. Mesmo mensagens antigas, fora do recorte recente, podem ser o foco; seu texto é limitado a 8.000 caracteres. A sugestão inclui uma referência com link para o comentário original. O GitHub recebe um comentário normal na conversa, com essa referência, após revisão e confirmação. Nada é enviado ao clicar em Responder.
+
+O foco fica indicado acima do campo e pode ser cancelado. Comentário pendente e foco são guardados juntos no navegador. Substituir um texto existente pede confirmação, e uma tentativa de envio pendente precisa ser resolvida antes de mudar o foco. Usa a mesma cota de IA da sugestão geral.
