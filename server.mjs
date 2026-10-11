@@ -9,7 +9,7 @@ import { dailyAiQuotaError } from './ai-quota.mjs';
 import { recoverableIssue, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
 import { historyStatusTargets, refreshIssueStates } from './history-status.mjs';
 import { issueReference, readEditableIssue, updateExistingIssue, revisedMemoryContent } from './issue-editor.mjs';
-import { labelsRevision, setIssueLabels, projectSelections, addIssueProjects, listIssueComments, sendIssueComment, changeIssueComment } from './github-issue-actions.mjs';
+import { labelsRevision, setIssueLabels, projectSelections, addIssueProjects, listIssueComments, sendIssueComment, changeIssueComment, readIssueComment } from './github-issue-actions.mjs';
 import { searchMemoryEntries } from './account-memory.mjs';
 import http from "node:http";
 import fs from "node:fs";
@@ -626,7 +626,7 @@ const server = http.createServer(async (req, res) => {
       if(issueAction[1]==='labels'&&method==='GET'){const issue=await readEditableIssue(ref,connection,githubApi);return send(res,200,{labels:issue.labels,labelsRevision:await labelsRevision(issue.labels)})}
       if(issueAction[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(req),githubApi,await githubOptions(userId));let warning='';try{const stored=localHistory(),current=stored.find(row=>row.userId===userId&&row.entry.repository===ref.repository&&row.entry.number===ref.number);if(current)current.entry.labels=result.labels;persistLocalHistory(stored)}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return send(res,200,{...result,warning})}
       if(issueAction[1]==='comments'&&['PATCH','DELETE'].includes(method)){await readEditableIssue(ref,connection,githubApi);return send(res,200,await changeIssueComment(ref,connection,await readBody(req),method,githubApi))}
-      if(issueAction[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));return send(res,200,{comments:data.comments,hasMore:data.hasMore})}return send(res,201,{comment:await sendIssueComment(ref,connection,await readBody(req),githubApi,localOperationStore(userId))})}
+      if(issueAction[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));const focus=url.searchParams.get('focus');return send(res,200,{comments:data.comments,hasMore:data.hasMore,...(focus?{focusComment:await readIssueComment(ref,connection,Number(focus),githubApi)}:{})})}return send(res,201,{comment:await sendIssueComment(ref,connection,await readBody(req),githubApi,localOperationStore(userId))})}
       if(issueAction[1]==='projects'&&method==='POST'){const body=await readBody(req),issue=await readEditableIssue(ref,connection,githubApi),projects=await addIssueProjects(connection,issue.nodeId,body,await githubOptions(userId),githubGraphql);let warning='';try{const stored=localHistory(),current=stored.find(row=>row.userId===userId&&row.entry.repository===ref.repository&&row.entry.number===ref.number);if(current){const ids=new Set(projects.map(p=>p.id));current.entry.projects=[...(current.entry.projects||[]).filter(p=>!ids.has(p.id)),...projects]}persistLocalHistory(stored)}catch{warning='Projetos processados no GitHub, mas o histórico não pôde ser sincronizado.'}return send(res,200,{projects,warning})}
       return send(res,404,{error:'Operação não encontrada.'});
     }
@@ -667,7 +667,7 @@ const server = http.createServer(async (req, res) => {
     if(pathname === "/api/github/attachments" && method === "POST") {
       if(!githubConnections.has(userId))return send(res,409,{error:"Conecte um repositório GitHub primeiro."});
       if(githubConnections.get(userId).githubUser)await ensureGithubOAuthIdentity(userId);
-      return send(res,201,await uploadGithubAttachment(githubConnections.get(userId),url.searchParams.get("name"),await readAttachment(req)));
+      if(url.searchParams.get('repository')&&(!githubConnections.get(userId)||(githubConnections.get(userId).owner+'/'+githubConnections.get(userId).repo).toLowerCase()!==url.searchParams.get('repository').toLowerCase()))throw workflowError('Conecte o repositório desta issue antes de anexar.',409);return send(res,201,await uploadGithubAttachment(githubConnections.get(userId),url.searchParams.get("name"),await readAttachment(req)));
     }
 
     if (pathname === "/api/github/oauth/status" && method === "GET") {
@@ -766,7 +766,7 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
+    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {

@@ -6,7 +6,7 @@ import { quotaSummary, measuredAiUsage, trackDailyUsage } from './daily-usage.mj
 import { recoverableIssue, d1OperationStore, issueMarker, findRecoveredIssue } from './issue-recovery.mjs';
 import { historyStatusTargets, refreshIssueStates } from './history-status.mjs';
 import { issueReference, readEditableIssue, updateExistingIssue, revisedMemoryContent } from './issue-editor.mjs';
-import { labelsRevision, setIssueLabels, projectSelections, addIssueProjects, listIssueComments, sendIssueComment, changeIssueComment } from './github-issue-actions.mjs';
+import { labelsRevision, setIssueLabels, projectSelections, addIssueProjects, listIssueComments, sendIssueComment, changeIssueComment, readIssueComment } from './github-issue-actions.mjs';
 import { memoryContent, selectAccountMemory, memoryInstruction, memorySources, memorySearch } from "./account-memory.mjs";
 import { validateSavedDraft, findSimilarIssues, validateHistoryEntry, fieldRefinementInstruction } from "./issue-workflow.mjs";
 import { readAttachment, uploadGithubAttachment } from "./github-attachments.mjs";
@@ -407,7 +407,7 @@ async function route(request, env) {
     if(action[1]==='labels'&&method==='GET'){const issue=await readEditableIssue(ref,connection,githubApi);return json({labels:issue.labels,labelsRevision:await labelsRevision(issue.labels)})}
     if(action[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(request),githubApi,await githubOptions(env,userId));let warning='';try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.labels',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(result.labels),userId,ref.repository,ref.number).run()}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return json({...result,warning})}
     if(action[1]==='comments'&&['PATCH','DELETE'].includes(method)){await readEditableIssue(ref,connection,githubApi);return json(await changeIssueComment(ref,connection,await readBody(request),method,githubApi))}
-    if(action[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));return json({comments:data.comments,hasMore:data.hasMore})}return json({comment:await sendIssueComment(ref,connection,await readBody(request),githubApi,d1OperationStore(env.DB,userId))},201)}
+    if(action[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));const focus=url.searchParams.get('focus');return json({comments:data.comments,hasMore:data.hasMore,...(focus?{focusComment:await readIssueComment(ref,connection,Number(focus),githubApi)}:{})})}return json({comment:await sendIssueComment(ref,connection,await readBody(request),githubApi,d1OperationStore(env.DB,userId))},201)}
     if(action[1]==='projects'&&method==='POST'){const body=await readBody(request),issue=await readEditableIssue(ref,connection,githubApi),projects=await addIssueProjects(connection,issue.nodeId,body,await githubOptions(env,userId),githubGraphql);let warning='';try{const previous=JSON.parse(row.entry).projects||[],ids=new Set(projects.map(p=>p.id)),merged=[...previous.filter(p=>!ids.has(p.id)),...projects];await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.projects',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(merged),userId,ref.repository,ref.number).run()}catch{warning='Projetos processados no GitHub, mas o histórico não pôde ser sincronizado.'}return json({projects,warning})}
     throw fail('Operação não encontrada.',404);
   }
@@ -457,7 +457,7 @@ async function route(request, env) {
   if(path==='/api/github/similar'&&method==='GET')return json(await findSimilarIssues(await githubConnection(env,userId),url.searchParams.get('title'),githubApi));
   if(path === "/api/github/attachments" && method === "POST") {
     const connection=await githubConnection(env,userId);if(!connection)throw fail("Conecte um repositório GitHub primeiro.",409);
-    return json(await uploadGithubAttachment(connection,url.searchParams.get("name"),await readAttachment(request.body)),201);
+    if(url.searchParams.get('repository')&&(!connection||(connection.owner+'/'+connection.repo).toLowerCase()!==url.searchParams.get('repository').toLowerCase()))throw fail('Conecte o repositório desta issue antes de anexar.',409);return json(await uploadGithubAttachment(connection,url.searchParams.get("name"),await readAttachment(request.body)),201);
   }
   if (path === "/api/github/oauth/status" && method === "GET") {
     const identity = await env.DB.prepare("SELECT login FROM github_identities WHERE user_id=?").bind(userId).first();
@@ -556,7 +556,7 @@ async function route(request, env) {
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
-  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;
