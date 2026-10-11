@@ -58,3 +58,8 @@ Versão 0.4.4: a lista começa pelas fases já presentes em backlog.list e depoi
 Versão 0.4.5: fases puladas ou canceladas não são aprovações pendentes. A consulta reutiliza fases do backlog, evitando consultar novamente os mesmos IDs. Responder abre o editor de comentários GitHub; a referência do repositório é conferida em issue.detail quando ainda não está disponível. Essa ação não aprova nem avança a fase. O contador mostra somente as tasks pendentes da seleção; a lista permanece visível durante a atualização em segundo plano.
 
 Atualização da interface: Responder na lista de aprovação agora abre um painel próprio com Sua aprovação da análise e Devolver (retrabalho), em vez dos comentários GitHub. A nota é guardada por conta, workspace e issue neste navegador. Copiar nota e Abrir aprovação no RepoSprint permitem continuar a aprovação lá. Aprovar análise, Solicitar ajuste e Devolver para Análise permanecem desativados enquanto seus protocolos não estiverem disponíveis. Nenhuma decisão ou nota é enviada automaticamente.
+
+
+### Devolver para Análise — versão 0.4.6
+
+Recarregue a extensão em chrome://extensions e depois recarregue o site. O botão agora abre a justificativa e a confirmação de devolução. A extensão consulta process.lifecycle.get, confere que Análise está em returnTargets e envia uma única chamada processWorkflow.advance com toNodeKey analyzed e justification. Não envia isOverride nem repete escritas automaticamente. As permissões são aplicadas pelo RepoSprint; recusas não geram confirmação de sucesso. Uma nova consulta verifica a fase após o envio. Aprovar análise e Solicitar ajuste continuam indisponíveis nesta interface.
