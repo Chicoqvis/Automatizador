@@ -18,3 +18,13 @@ Protótipo baseado em chamadas internas sem suporte oficial confirmado. Cookies 
 Os testes usam API simulada; o funcionamento com sua conta real precisa ser testado após instalar/recarregar. Cada perfil e dispositivo precisa da extensão. Para remover, use Remover na página de extensões.
 
 Versão 0.1.4: não há checkbox de confirmação. Após a busca, clique diretamente em Adicionar ao backlog. Resultados com repositório identificado diferente do solicitado continuam bloqueados.
+
+## Priorizar backlog — versão 0.2.0
+
+Após atualizar, recarregue a extensão e a página da ferramenta. O botão Priorizar backlog aparece no topo da ferramenta e também na janela da extensão. Abre um quadro da extensão, sem abrir o site RepoSprint.
+
+O quadro consulta backlog.list e usa sprintTarget (out, active, future) para formar as colunas. Arraste dentro da mesma coluna ou use Subir/Descer. Salvar ordem envia backlog.reorder com todos os issueIds, preservando os cards de outras colunas. Descartar alterações restaura a ordem carregada. Movimentos entre colunas não são enviados.
+
+Antes de salvar, a lista, as posições e as colunas são comparadas com uma nova consulta. Se mudou, descarte e atualize. Após enviar, a ordem é consultada e conferida novamente. Não há garantia atômica contra alterações simultâneas entre consulta e envio, pois o protocolo observado não possui revisão. Em falha ou resposta perdida, confira o RepoSprint antes de repetir. Não há repetição automática.
+
+A sessão e as permissões do RepoSprint continuam necessárias. Testes automatizados utilizam API simulada; valide primeiro com uma pequena reorganização real. A ordem não altera fases, responsáveis, estados das issues ou associação a sprints.
