@@ -50,3 +50,14 @@ test('abrir processo de uma issue não varre o workspace e confere o repositóri
  const calls=[],request=async(action,workspace,value)=>{calls.push({action,value});return {payload:[{result:{data:action==='issue.list'?{issues:[{id:'other',number:42,githubUrl:'https://github.com/other/repo/issues/42'},{id:'correct',number:42,title:'Minha task',githubUrl:'https://github.com/owner/repo/issues/42'}]}:[{issueId:'correct',currentPhase:'business_approved',phaseStatus:'pending'}]}}]}};
  const result=await loadIssueProcess('workspace',{repository:'owner/repo',number:42},request,async()=>{});assert.equal(result.items[0].id,'correct');assert.deepEqual(calls.map(x=>x.action),['issue.list','process.lifecycle.phaseSummaries']);assert.deepEqual(calls[1].value,['correct']);
 });
+test('ID já conhecido elimina a busca e consulta somente a fase da issue',async()=>{
+ const calls=[],row={id:'known',number:42,githubUrl:'https://github.com/owner/repo/issues/42'};
+ const result=await loadIssueProcess('workspace',{repository:'owner/repo',number:42},async(action,workspace,value)=>{calls.push({action,value});return {payload:[{result:{data:[]}}]}},async()=>{},row);
+ assert.deepEqual(calls,[{action:'process.lifecycle.phaseSummaries',value:['known']}]);assert.equal(result.items[0].process,null);
+});
+test('consulta individual passa à frente das consultas gerais que aguardam na fila',async()=>{
+ const order=[];let release,started;const gate=new Promise(resolve=>release=resolve),ready=new Promise(resolve=>started=resolve);
+ const request=async(action,workspace,value)=>{order.push(value);if(value==='first'){started();await gate}return {payload:[{result:{data:[]}}]}};
+ const first=processRead('workspace','issue.list','first',request,async()=>{});await ready;
+ const background=processRead('workspace','issue.list','background',request,async()=>{}),individual=processRead('workspace','issue.list','individual',request,async()=>{},true);release();await Promise.all([first,background,individual]);assert.deepEqual(order,['first','individual','background']);
+});
