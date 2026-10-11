@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {approvalReport,nextRepoState,d1RepoState} from '../repo-process-state.mjs';
-import {loadProcesses,isBusinessApproval} from '../extensions/reposprint/process.js';
+import {loadProcesses,isBusinessApproval,processRead,loadIssueProcess} from '../extensions/reposprint/process.js';
 import {pageRequest} from '../extensions/reposprint/protocol.js';
 const item={id:'task-a',number:42,title:'Task',author:'Chicoqvis',repository:'owner/repo',enteredAt:'2026-10-09T20:15:00Z'};
 let checkedAt=Date.now();
@@ -38,5 +38,15 @@ test('protocolo de consulta é GET, usa workspaceId nas fases e não aceita apro
  assert.deepEqual(JSON.parse(calls[0].url.searchParams.get('input')),{'0':{organizationId:'workspace',sortBy:'createdAt',sortOrder:'desc',page:2,limit:50}});
  assert.deepEqual(JSON.parse(calls[1].url.searchParams.get('input')),{'0':{workspaceId:'workspace',issueIds:['task-a']}});assert(calls.every(x=>!x.options.method&&x.options.credentials==='include'));
  assert((await pageRequest('process.approve','workspace','task-a')).error);assert((await pageRequest('process.lifecycle.phaseSummaries','workspace',['../bad'])).error);assert.equal(calls.length,2);
+ globalThis.fetch=async()=>new Response('',{status:429,headers:{'Retry-After':'45'}});const limited=await pageRequest('process.issueList','workspace',1);assert.equal(limited.rateLimited,true);assert.equal(limited.retryAfterMs,45000);assert(!limited.error.includes('HTTP 429'));
  }finally{globalThis.location=oldLocation;globalThis.fetch=oldFetch}
+});
+test('limite de consultas respeita a pausa e repete somente leitura sem perder a página',async()=>{
+ const calls=[],pauses=[];let limited=true;
+ const request=async(action,workspace,page)=>{calls.push(page);if(limited){limited=false;return {rateLimited:true,retryAfterMs:35000,error:'Pausa automática'}}return {payload:[{result:{data:{issues:[]}}}]}};
+ await processRead('workspace','process.issueList',7,request,async ms=>pauses.push(ms));assert.deepEqual(calls,[7,7]);assert(pauses.some(ms=>ms>=34000));
+});
+test('abrir processo de uma issue não varre o workspace e confere o repositório',async()=>{
+ const calls=[],request=async(action,workspace,value)=>{calls.push({action,value});return {payload:[{result:{data:action==='issue.list'?{issues:[{id:'other',number:42,githubUrl:'https://github.com/other/repo/issues/42'},{id:'correct',number:42,title:'Minha task',githubUrl:'https://github.com/owner/repo/issues/42'}]}:[{issueId:'correct',currentPhase:'business_approved',phaseStatus:'pending'}]}}]}};
+ const result=await loadIssueProcess('workspace',{repository:'owner/repo',number:42},request,async()=>{});assert.equal(result.items[0].id,'correct');assert.deepEqual(calls.map(x=>x.action),['issue.list','process.lifecycle.phaseSummaries']);assert.deepEqual(calls[1].value,['correct']);
 });

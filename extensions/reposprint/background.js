@@ -1,13 +1,15 @@
-import {loadProcesses} from './process.js';
+import {loadProcesses,loadIssueProcess} from './process.js';
 let processCache=null,processLoading=null;
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type!=='reposprint-process'||new URL(sender.url||'https://invalid').origin!=='https://automacao-issues-ai.automacao-issue-chico.workers.dev')return;
- (async()=>{const saved=await chrome.storage.local.get('reposprintWorkspace'),workspace=saved.reposprintWorkspace||'SxoNSBNfOj5hhl6dw2UmKAgFUqKdF33y';
- if(processCache?.workspace===workspace&&Date.now()-processCache.checkedAt<60000)return processCache;
+ (async()=>{const saved=await chrome.storage.local.get(['reposprintWorkspace','reposprintProcessCache']),workspace=saved.reposprintWorkspace||'SxoNSBNfOj5hhl6dw2UmKAgFUqKdF33y';
+ if(message.reference){const ref=message.reference;if(!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(ref.repository)||!Number.isSafeInteger(ref.number)||ref.number<1)throw Error('Issue inválida.');const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);return loadIssueProcess(workspace,ref).finally(()=>clearInterval(keepAlive))}
+ processCache??=saved.reposprintProcessCache;
+ if(processCache?.workspace===workspace&&Date.now()-processCache.checkedAt<180000)return processCache;
  if(processLoading&&processLoading.workspace!==workspace)await processLoading.promise.catch(()=>{});
- if(!processLoading){const promise=loadProcesses(workspace).then(data=>{processCache=data;return data}).finally(()=>{processLoading=null});processLoading={workspace,promise}}
+ if(!processLoading){const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);const promise=loadProcesses(workspace).then(async data=>{processCache=data;await chrome.storage.local.set({reposprintProcessCache:data});return data}).finally(()=>{clearInterval(keepAlive);processLoading=null});processLoading={workspace,promise}}
  return processLoading.promise;
- })().then(data=>reply({data}),error=>reply({error:error.message}));return true;
+ })().then(data=>reply({data}),error=>reply({error:error.message,retryAt:error.retryAt}));return true;
 });
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if(!['open-reposprint','open-reposprint-backlog'].includes(message?.type)||sender.url?.split('/')[2]!=='automacao-issues-ai.automacao-issue-chico.workers.dev')return;
