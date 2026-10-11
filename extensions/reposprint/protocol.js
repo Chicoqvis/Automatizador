@@ -9,7 +9,8 @@ export function trpcData(payload){const result=Array.isArray(payload)?payload[0]
 // Requisição da extensão; não lê nem retorna cookies ou tokens.
 export async function pageRequest(action,workspace,value){
  if(location.origin!=='https://reposprint.com'&&!location.origin.startsWith('chrome-extension://'))return {error:'Abra esta ação pela extensão.'};
- if(!['issue.list','process.issueList','process.lifecycle.phaseSummaries','backlog.add','backlog.list','backlog.reorder','backlog.setSprintTarget','backlog.remove','backlog.issueHistory'].includes(action)||!/^[-a-zA-Z0-9_]{1,200}$/.test(workspace))return {error:'Parâmetros inválidos.'};
+ if(!['issue.list','process.issueList','process.approvalList','process.lifecycle.phaseSummaries','backlog.add','backlog.list','backlog.reorder','backlog.setSprintTarget','backlog.remove','backlog.issueHistory'].includes(action)||!/^[-a-zA-Z0-9_]{1,200}$/.test(workspace))return {error:'Parâmetros inválidos.'};
+ if(action==='process.approvalList'&&(!Number.isSafeInteger(value)||value<1||value>200))return {error:'Página inválida.'};
  if(action==='process.issueList'&&(!Number.isSafeInteger(value)||value<1||value>200))return {error:'Página inválida.'};
  if(action==='process.lifecycle.phaseSummaries'&&(!Array.isArray(value)||!value.length||value.length>50||new Set(value).size!==value.length||value.some(id=>typeof id!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(id))))return {error:'Issues inválidas.'};
  if(action==='issue.list'&&(!Number.isSafeInteger(value)||value<1)||action==='backlog.add'&&(typeof value!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(value)))return {error:'Issue inválida.'};
@@ -20,8 +21,9 @@ export async function pageRequest(action,workspace,value){
  if(['backlog.remove','backlog.issueHistory'].includes(action)){delete input.issueIds;input.issueId=value}
  if(action==='backlog.setSprintTarget'){delete input.issueIds;input.issueId=value.issueId;input.sprintTarget=value.sprintTarget}
  if(action==='process.issueList'){delete input.issueIds;Object.assign(input,{sortBy:'createdAt',sortOrder:'desc',page:value,limit:50})}
+ if(action==='process.approvalList'){delete input.issueIds;Object.assign(input,{marcos:['aprovacao_negocio:ainda_falta'],sortBy:'createdAt',sortOrder:'desc',page:value,limit:50})}
  if(action==='process.lifecycle.phaseSummaries'){delete input.organizationId;input.workspaceId=workspace;input.issueIds=value}
- const url=new URL('https://api.reposprint.com/trpc/'+(action==='process.issueList'?'issue.list':action));url.searchParams.set('batch','1');const options={credentials:'include',signal:AbortSignal.timeout(20000)};
- if(['issue.list','process.issueList','process.lifecycle.phaseSummaries','backlog.list','backlog.issueHistory'].includes(action))url.searchParams.set('input',JSON.stringify({'0':input}));else{options.method='POST';options.headers={'Content-Type':'application/json'};options.body=JSON.stringify({'0':input})}
+ const url=new URL('https://api.reposprint.com/trpc/'+(['process.issueList','process.approvalList'].includes(action)?'issue.list':action));url.searchParams.set('batch','1');const options={credentials:'include',signal:AbortSignal.timeout(20000)};
+ if(['issue.list','process.issueList','process.approvalList','process.lifecycle.phaseSummaries','backlog.list','backlog.issueHistory'].includes(action))url.searchParams.set('input',JSON.stringify({'0':input}));else{options.method='POST';options.headers={'Content-Type':'application/json'};options.body=JSON.stringify({'0':input})}
  try{const response=await fetch(url,options);if(response.status===429){const header=response.headers.get('Retry-After'),seconds=Number(header),retryAfterMs=header?(Number.isFinite(seconds)?seconds*1000:Date.parse(header)-Date.now()):30000;return {error:'A consulta será retomada automaticamente após a pausa solicitada pelo RepoSprint.',rateLimited:true,retryAfterMs:Math.max(1000,Number.isFinite(retryAfterMs)?retryAfterMs:30000)}}if(response.status===401||response.status===403)return {error:'Entre novamente no RepoSprint e confira sua permissão no workspace.'};if(!response.ok)return {error:'RepoSprint não confirmou esta ação. Confira sua sessão e acesso.'};return {payload:await response.json()}}catch{return {error:'Não foi possível confirmar a resposta. Confira o RepoSprint antes de repetir a inclusão.'}}
 }

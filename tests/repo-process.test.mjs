@@ -29,7 +29,7 @@ test('consulta pagina todo workspace, cruza fase atual e rejeita paginação ins
  const calls=[],rows=Array.from({length:51},(_,i)=>({id:'task-'+i,number:i+1,title:'Task '+i,author:i?'other':'Chicoqvis'}));
  const request=async(action,workspace,value)=>{calls.push({action,value});const data=action==='process.issueList'?{total:51,issues:rows.slice((value-1)*50,value*50)}:value.map(id=>({issueId:id,currentPhase:id==='task-0'?'business_approved':'analyzed',phaseStatus:'pending'}));return {payload:[{result:{data}}]}};
  const data=await loadProcesses('workspace',request);assert.equal(data.items.length,51);assert.equal(calls.filter(x=>x.action==='process.issueList').length,2);assert.equal(calls.filter(x=>x.action==='process.lifecycle.phaseSummaries').length,2);assert.equal(data.items.filter(x=>isBusinessApproval(x.process)).length,1);assert.equal(isBusinessApproval({currentPhase:'business_approved',phaseStatus:'completed'}),false);
- await assert.rejects(loadProcesses('workspace',async()=>({payload:[{result:{data:{total:51,issues:rows.slice(0,50)}}}]})),/paginação/);
+ await assert.rejects(loadProcesses('workspace',async action=>({payload:[{result:{data:action==='process.issueList'?{total:51,issues:rows.slice(0,50)}:[]}}]}),async()=>{}),/paginação/);
  await assert.rejects(loadProcesses('workspace',async()=>({error:'Sessão expirada'})),/Sessão/);
 });
 test('protocolo de consulta é GET, usa workspaceId nas fases e não aceita aprovação',async()=>{
@@ -60,4 +60,10 @@ test('consulta individual passa à frente das consultas gerais que aguardam na f
  const request=async(action,workspace,value)=>{order.push(value);if(value==='first'){started();await gate}return {payload:[{result:{data:[]}}]}};
  const first=processRead('workspace','issue.list','first',request,async()=>{});await ready;
  const background=processRead('workspace','issue.list','background',request,async()=>{}),individual=processRead('workspace','issue.list','individual',request,async()=>{},true);release();await Promise.all([first,background,individual]);assert.deepEqual(order,['first','individual','background']);
+});
+test('aprovações incluem todos os autores e publicam fases antes da última página',async()=>{
+ const rows=Array.from({length:51},(_,i)=>({id:'a-'+i,number:i+1,author:i===50?'other':'Chicoqvis'})),calls=[],progress=[];
+ const request=async(action,workspace,value)=>{calls.push(action);return {payload:[{result:{data:action==='process.approvalList'?{total:51,issues:rows.slice((value-1)*50,value*50)}:value.map(id=>({issueId:id,currentPhase:id==='a-0'||id==='a-50'?'business_approved':'analyzed',phaseStatus:'pending'}))}}]}};
+ const result=await loadProcesses('workspace',request,async()=>{},{approvals:true,onProgress:data=>progress.push(data)});
+ assert.deepEqual(calls,['process.approvalList','process.lifecycle.phaseSummaries','process.approvalList','process.lifecycle.phaseSummaries']);assert.equal(progress[0].items.length,50);assert.equal(progress[0].partial,true);assert.equal(progress[0].items[0].process.currentPhase,'business_approved');assert.equal(result.partial,false);assert.deepEqual(result.items.filter(x=>isBusinessApproval(x.process)).map(x=>x.author),['Chicoqvis','other']);
 });

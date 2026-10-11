@@ -19,18 +19,18 @@ export async function loadIssueProcess(workspace,ref,request=pageRequest,pause=w
  const phases=await processRead(workspace,'process.lifecycle.phaseSummaries',[row.id],request,pause,true);if(!Array.isArray(phases))throw Error('Resposta de fases inválida.');
  return {workspace,checkedAt:Date.now(),items:joinProcesses([row],phases),individual:true};
 }
-export async function loadProcesses(workspace,request=pageRequest,pause=wait){
- async function read(action,value){return processRead(workspace,action,value,request,pause)}
- const issues=new Map();let expected=null;
+export async function loadProcesses(workspace,request=pageRequest,pause=wait,options={}){
+ async function read(action,value){return processRead(workspace,action,value,request,pause,!!options.approvals)}
+ const phases=[];const issues=new Map();let expected=null;
  for(let page=1;page<=200;page++){
-  const data=await read('process.issueList',page);
+  const data=await read(options.approvals?'process.approvalList':'process.issueList',page);
   if(!Array.isArray(data?.issues)||!Number.isSafeInteger(data.total)||data.total<0)throw Error('Lista do workspace incompleta. Nenhum aviso foi atualizado.');
   if(expected!==null&&expected!==data.total)throw Error('O workspace mudou durante a consulta. A ferramenta tentará novamente.');expected=data.total;
   for(const row of data.issues){if(typeof row.id!=='string'||issues.has(row.id))throw Error('A paginação mudou durante a consulta. A ferramenta tentará novamente.');issues.set(row.id,{id:row.id,number:row.number,title:row.title,author:row.author,githubUrl:row.githubUrl,state:row.state,deletedAt:row.deletedAt})}
+  const ids=data.issues.map(x=>x.id);if(ids.length){const current=await read('process.lifecycle.phaseSummaries',ids);if(!Array.isArray(current))throw Error('Resposta de fases inválida.');const seen=new Set();for(const phase of current){if(!ids.includes(phase.issueId)||seen.has(phase.issueId))throw Error('Resposta de fases inconsistente.');seen.add(phase.issueId);phases.push(phase)}}
+  await options.onProgress?.({workspace,checkedAt:Date.now(),items:joinProcesses([...issues.values()],phases),partial:issues.size!==expected,total:expected,scope:options.approvals?'approvals':'workspace'});
   if(issues.size===expected)break;
   if(!data.issues.length||issues.size>expected||page===200)throw Error('Lista do workspace incompleta. Nenhum aviso foi atualizado.');
  }
- const rows=[...issues.values()],phases=[];
- for(let i=0;i<rows.length;i+=50){const ids=rows.slice(i,i+50).map(x=>x.id),data=await read('process.lifecycle.phaseSummaries',ids);if(!Array.isArray(data))throw Error('Resposta de fases inválida.');const seen=new Set();for(const row of data){if(!ids.includes(row.issueId)||seen.has(row.issueId))throw Error('Resposta de fases inconsistente.');seen.add(row.issueId);phases.push(row)}}
- return {workspace,checkedAt:Date.now(),items:joinProcesses(rows,phases)};
+ return {workspace,checkedAt:Date.now(),items:joinProcesses([...issues.values()],phases),scope:options.approvals?'approvals':'workspace',partial:false};
 }
