@@ -1,3 +1,4 @@
+import {approvalReport,d1RepoState,nextRepoState,repoView} from './repo-process-state.mjs';
 import {accountActivities} from './account-activities.mjs';
 import {preferenceRepository,projectPreferenceBody,getProjectPreferences,saveProjectPreferences} from './project-preferences.mjs';
 import {githubAccount,verifyCommentAccount} from './github-account.mjs';
@@ -526,6 +527,10 @@ async function route(request, env) {
   }
   if(path==='/api/github/account'&&method==='GET'){const connection=await githubConnection(env,userId);return json({githubLogin:await githubAccount(connection,githubApi,url.searchParams.get('repository')||'')})}
  if(path==='/api/project-preferences'&&['GET','PUT'].includes(method)){const repository=preferenceRepository(url.searchParams.get('repository'));return json(method==='GET'?await getProjectPreferences(env.DB,userId,repository):await saveProjectPreferences(env.DB,userId,repository,await readBody(request)))}
+
+ if(path==='/api/repo-process'&&method==='GET')return json(await d1RepoState(env.DB,userId).list());
+ if(path==='/api/repo-process'&&method==='POST'){const body=await readBody(request,1500000),connection=await githubConnection(env,userId),login=await githubAccount(connection,githubApi);return json(await d1RepoState(env.DB,userId).sync(approvalReport(body,login)))}
+ if(path==='/api/repo-process/read'&&method==='PATCH')return json(await d1RepoState(env.DB,userId).read());
  if(path==='/api/pending-mentions'&&method==='GET'){const store=d1Notifications(env.DB,userId);return json({items:await store.pendingList(),count:await store.pendingCount()})}
  if(path==='/api/pending-mentions'&&method==='PATCH'){const body=await readBody(request),ids=notificationReadIds({ids:[body]});if(typeof body.resolved!=='boolean')throw fail('Estado de pendência inválido.');await d1Notifications(env.DB,userId).resolve(ids[0],body.resolved);return json({ok:true})}
   if(path==='/api/notifications'&&method==='GET'){
@@ -566,7 +571,7 @@ async function route(request, env) {
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
-  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js','/public/button-colors.js','/public/auto-sync.js','/public/outside-close.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js','/public/button-colors.js','/public/auto-sync.js','/public/outside-close.js','/public/repo-process-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;

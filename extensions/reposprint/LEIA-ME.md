@@ -36,3 +36,13 @@ Movimentações consulta backlog.issueHistory e mostra autor, data e posição a
 Mover ou remover aplica imediatamente, verifica a lista antes e depois e atualiza o quadro. Ordens locais não salvas devem ser salvas ou descartadas antes dessas ações. Mudanças externas bloqueiam o envio até atualizar. Erros não são repetidos automaticamente. O histórico é carregado somente ao clicar. A confirmação do serviço e o resultado consultado determinam o sucesso; permissões e sessão continuam sendo as do RepoSprint.
 
 Versão 0.3.5: atualizações são automáticas. O backlog é conferido a cada minuto enquanto visível e sem ordem pendente, arraste ou menu aberto. Salve ou descarte para retomar. O botão Atualizar backlog não aparece mais; a escolha do workspace também carrega os dados automaticamente.
+
+## Processo Repo e aprovação de negócio — versão 0.4.0
+
+Recarregue a extensão instalada nesta pasta e depois a página da ferramenta. No histórico, Processo Repo mostra a fase atual, o estado informado, o responsável e a data de entrada. Aprovação de negócio · Repo consulta todas as páginas do workspace selecionado na extensão, cruza as fases atuais e oferece Somente criadas por mim, usando o login verificado da conta GitHub conectada. Tasks de qualquer repositório do workspace podem aparecer; tasks sem fase informada não são presumidas como aprovação.
+
+A consulta usa somente GET em issue.list e process.lifecycle.phaseSummaries. Não utiliza o marco aprovacao_negocio:ainda_falta como substituto da fase atual. Atualiza a cada três minutos com a ferramenta aberta e visível; não é um webhook nem um monitor com o navegador fechado. O servidor não recebe cookies ou credenciais RepoSprint.
+
+Para tasks abertas criadas pela conta GitHub conectada, a fase business_approved pendente gera aviso no sino e pendência na categoria REPO. Avisos e leituras ficam persistidos por conta da ferramenta e workspace. A primeira consulta também inclui as aprovações existentes. A mesma entrada na fase não gera aviso repetido; uma nova data de entrada pode gerar outro aviso. A pendência anterior é concluída após uma consulta completa confirmar a saída; falhas de consulta e fases desconhecidas preservam o estado anterior. O botão de marcar avisos como lidos não resolve a pendência. Limpar notificações de comentários mantém os avisos REPO.
+
+Não há ações de Aprovar análise, Solicitar ajuste ou Devolver para Análise nesta versão. O resumo de fases também não informa os privilégios e motivos específicos de bloqueio. O link para a issue permite consultar e agir no RepoSprint. As chamadas internas continuam sujeitas às permissões e à sessão da conta RepoSprint; os testes usam respostas simuladas.
