@@ -776,7 +776,7 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
+    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js','/public/button-colors.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {
