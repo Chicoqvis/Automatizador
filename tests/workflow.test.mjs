@@ -63,6 +63,8 @@ test('rascunhos são isolados por conta, persistem anexos e impedem edição com
     const response=await worker.fetch(new Request('https://test.example'+path,{method,headers:{Cookie:'automacao_session='+account,Origin:'https://test.example','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)}),env);
     return {status:response.status,data:await response.json()};
   }
+
+ const beforeRenew=await request('/api/auth/me'),bobExpiry=(await request('/api/auth/me','GET',undefined,'bob')).data.expiresAt;assert(beforeRenew.data.expiresAt>Date.now());const renewResponse=await worker.fetch(new Request('https://test.example/api/auth/renew',{method:'POST',headers:{Cookie:'automacao_session=alice',Origin:'https://test.example','Content-Type':'application/json'},body:'{}'}),env);assert.equal(renewResponse.status,200);assert(renewResponse.headers.get('set-cookie').includes('Max-Age=43200'));assert(renewResponse.headers.get('set-cookie').includes('HttpOnly'));const renewed=await renewResponse.json();assert(renewed.expiresAt-Date.now()>43190000);assert.equal((await request('/api/auth/me','GET',undefined,'bob')).data.expiresAt,bobExpiry);db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update('expired').digest('hex'),'alice',Date.now()-1);assert.equal((await request('/api/auth/renew','POST',{},'expired')).status,401);
   assert.equal((await request('/api/admin/quotas')).status,403);
   assert.equal((await request('/api/admin/usage')).status,403);
   assert.equal((await request('/api/admin/quotas','GET',undefined,'unknown')).status,401);

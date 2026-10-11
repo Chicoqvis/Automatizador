@@ -592,7 +592,8 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { user: safeUser(user) });
     }
     const session = sessionFor(req);
-    if (pathname === "/api/auth/me" && method === "GET") return send(res, 200, session ? { user: safeUser(session.user) } : { user: null });
+    if (pathname === "/api/auth/me" && method === "GET") return send(res, 200, session ? { user: safeUser(session.user),expiresAt:session.expiresAt,serverNow:Date.now() } : { user: null,expiresAt:null,serverNow:Date.now() });
+    if(pathname==='/api/auth/renew'&&method==='POST'){if(!session)return send(res,401,{error:'Sua sessão expirou. Entre novamente para continuar.'});const token=parseCookies(req.headers.cookie).automacao_session,current=sessions.get(token),now=Date.now();if(!current||current.expiresAt<=now)return send(res,401,{error:'Sua sessão expirou. Entre novamente.'});current.expiresAt=now+12*60*60*1000;res.setHeader('Set-Cookie',sessionCookie(req,token,12*60*60));return send(res,200,{expiresAt:current.expiresAt,serverNow:now,user:safeUser(session.user)})}
     if (pathname === "/api/auth/logout" && method === "POST") {
       const token = parseCookies(req.headers.cookie).automacao_session; const loggedOut = token && sessions.get(token); if (token) sessions.delete(token);
       if (loggedOut && !Array.from(sessions.values()).some((item) => item.userId === loggedOut.userId)) { githubConnections.delete(loggedOut.userId); githubOAuthIdentities.delete(loggedOut.userId); }
@@ -771,7 +772,7 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
+    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {

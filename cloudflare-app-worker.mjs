@@ -365,7 +365,8 @@ async function route(request, env) {
     return withCookie(json({ user: safeUser(user) }), await createSession(env, user.id), SESSION_TTL);
   }
   const session = await sessionFor(request, env);
-  if (path === "/api/auth/me" && method === "GET") return json({ user: session ? safeUser(session.user) : null });
+  if (path === "/api/auth/me" && method === "GET") return json({ user: session ? safeUser(session.user) : null,expiresAt:session?.expiresAt||null,serverNow:Date.now() });
+  if(path==='/api/auth/renew'&&method==='POST'){if(!session)throw fail('Sua sessão expirou. Entre novamente para continuar.',401);const now=Date.now(),expiresAt=now+SESSION_TTL*1000;const result=await env.DB.prepare('UPDATE sessions SET expires_at=? WHERE token_hash=? AND user_id=? AND expires_at>?').bind(expiresAt,session.tokenHash,session.user.id,now).run();if(!result.meta.changes)throw fail('Sua sessão expirou. Entre novamente.',401);return withCookie(json({expiresAt,serverNow:now,user:safeUser(session.user)}),session.token,SESSION_TTL)}
   if (path === "/api/auth/logout" && method === "POST") {
     if (session) await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(session.tokenHash).run();
     return withCookie(json({ ok: true }), "", 0);
@@ -561,7 +562,7 @@ async function route(request, env) {
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
-  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;
