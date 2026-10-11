@@ -465,6 +465,8 @@ $("connectGithub").addEventListener("click",async function(){
 });
 
 const extraProjectBox=document.createElement('section');extraProjectBox.style.marginTop='10px';const extraTitle=document.createElement('label');extraTitle.textContent='Também adicionar aos projetos';const extraList=document.createElement('div');extraProjectBox.append(extraTitle,extraList);$('projectStatusBox').after(extraProjectBox);const extraProjectPicker=window.createProjectPicker(extraList);
+function refreshVisibleProjectOptions(){const select=$('projectSelect'),selected=select.value;select.replaceChildren(new Option('Não adicionar a um projeto',''));githubProjects.filter(p=>!window.isProjectHidden(p.id)||p.id===selected).forEach(p=>select.add(new Option(p.title+' · #'+p.number,p.id)));select.value=selected;extraProjectPicker.setProjects(githubProjects)}
+window.addEventListener('project-visibility-changed',refreshVisibleProjectOptions);$('projectSelect').addEventListener('change',refreshVisibleProjectOptions);
 function selectedProjects(){const primary=$('projectSelect').value?[{id:$('projectSelect').value,statusFieldId:$('projectStatus').dataset.fieldId||'',statusOptionId:$('projectStatus').value}]:[];return [...primary,...extraProjectPicker.capture()]}
 const savedRepositories=window.setupSavedRepositories({canSwitch:()=>!issueSubmitting&&!attachmentUploads&&!$('organize').disabled&&!Object.values(failedAttachments).some(items=>items.length),onSwitch:activateNotificationRepository});
 
@@ -503,7 +505,7 @@ async function loadGithubOptions(){
     githubLabels=Array.isArray(data.labels)?data.labels:[];githubProjects=Array.isArray(data.projects)?data.projects:[];extraProjectPicker.setProjects(githubProjects);
     const availableLabelNames=new Set(githubLabels.map(function(label){return label.name}));selectedLabelNames.forEach(function(name){if(!availableLabelNames.has(name))selectedLabelNames.delete(name)});
     renderLabels();applyClassificationLabel();const select=$("projectSelect");select.replaceChildren(new Option("Não adicionar a um projeto",""));
-    githubProjects.forEach(function(project){select.add(new Option(project.title+" · #"+project.number,project.id))});
+    githubProjects.filter(project=>!window.isProjectHidden(project.id)).forEach(function(project){select.add(new Option(project.title+" · #"+project.number,project.id))});
     feedback.textContent=githubLabels.length+" labels e "+githubProjects.length+" projetos carregados.";
     if(data.projectsError)feedback.textContent+=" Projetos indisponíveis: "+data.projectsError+" Confira Projects: Read and write no token.";
     else if(!githubProjects.length)feedback.textContent+=" Se esperava encontrar projetos, confira a permissão Projects do token.";
@@ -612,7 +614,7 @@ const workflow=window.setupIssueWorkflow({
     ids.forEach(function(id){$(id).value=id==='frequency'?normalizeFrequency(snapshot[id]):typeof snapshot[id]==='string'?snapshot[id]:''});$('raw').value=snapshot.raw||'';$('issueTemplate').value=snapshot.classificationPreference||'';$('issueTemplate').dispatchEvent(new Event('change'));aiClassification=snapshot.aiClassification||'';aiUndoStack.length=0;touched.clear();generatedByAi.clear();lastQuestions=[];renderQuestions([]);
     attachmentFields.forEach(function(id){fieldAttachments[id]=snapshot.attachments&&snapshot.attachments[id]||[];renderFieldAttachments(id)});
     selectedLabelNames.clear();const sameRepo=snapshot.repository===$('githubTarget').textContent.replace('Conectado a ','');if(sameRepo)(snapshot.labels||[]).forEach(function(name){if(githubLabels.some(function(item){return item.name===name}))selectedLabelNames.add(name)});renderLabels();
-    $('projectSelect').value=sameRepo?snapshot.projectId||'':'';$('projectSelect').dispatchEvent(new Event('change'));$('projectStatus').value=sameRepo?snapshot.statusOptionId||'':'';extraProjectPicker.restore(sameRepo?(snapshot.projects||[]).filter(p=>p.id!==$('projectSelect').value):[]);update();
+    if(sameRepo&&snapshot.projectId&&!Array.from($('projectSelect').options).some(o=>o.value===snapshot.projectId)){const project=githubProjects.find(p=>p.id===snapshot.projectId);if(project)$('projectSelect').add(new Option(project.title+' · #'+project.number,project.id))}$('projectSelect').value=sameRepo?snapshot.projectId||'':'';$('projectSelect').dispatchEvent(new Event('change'));$('projectStatus').value=sameRepo?snapshot.statusOptionId||'':'';extraProjectPicker.restore(sameRepo?(snapshot.projects||[]).filter(p=>p.id!==$('projectSelect').value):[]);update();
     if(snapshot.repository&&!sameRepo)toast('Rascunho aberto. Conecte o repositório '+snapshot.repository+' e revise labels/projeto antes de enviar.');
   }
 });
