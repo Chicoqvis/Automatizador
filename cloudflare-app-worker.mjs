@@ -571,7 +571,11 @@ async function route(request, env) {
   if(path==='/public/quota-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/quota-ui.js',request.url),{method,headers:request.headers}));
   if(path==='/public/memory-ui.js'&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL('/memory-ui.js',request.url),{method,headers:request.headers}));
   if(['/public/issue-editor-ui.js','/public/usage-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
-  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js','/public/button-colors.js','/public/auto-sync.js','/public/outside-close.js','/public/repo-process-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(['/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js','/public/button-colors.js','/public/auto-sync.js','/public/outside-close.js','/public/repo-process-ui.js','/public/repo-integration-ui.js'].includes(path)&&['GET','HEAD'].includes(method))return env.ASSETS.fetch(new Request(new URL(path.replace('/public/','/'),request.url),{method,headers:request.headers}));
+  if(path==='/public/downloads/reposprint-extension.zip'&&['GET','HEAD'].includes(method)){
+    const response=await env.ASSETS.fetch(new Request(new URL('/downloads/reposprint-extension.zip',request.url),{method,headers:request.headers}));
+    const headers=new Headers(response.headers);headers.set('Content-Type','application/zip');headers.set('Content-Disposition','attachment; filename="reposprint-extension.zip"');headers.set('Cache-Control','no-store');return new Response(response.body,{status:response.status,headers});
+  }
   if ((path === "/" || path === "/index.html") && ["GET", "HEAD"].includes(method)) {
     const assetUrl = new URL("/index.html", request.url);
     assetUrl.search = url.search;

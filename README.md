@@ -262,3 +262,15 @@ Os controles de Atualizar deixam de aparecer. A interface conserva os mesmos han
 Comentários com editor de comentário aberto e conversas com mais de 100 comentários carregados não são reconstruídos automaticamente para preservar edição/paginação. O formulário principal não é recarregado. Histórico idêntico não é reconstruído. As mensagens de falha continuam disponíveis, e os ciclos tentam novamente sem interação. Os ciclos adicionam requisições de leitura e consultas à API GitHub; não geram IA nem enviam comentários.
 
 Na extensão RepoSprint 0.3.5, o backlog é atualizado a cada minuto quando visível e sem ordem pendente, arraste ou menu/dialog aberto. Alterações locais precisam ser salvas ou descartadas antes de retomar. As abas de workspace são conferidas automaticamente, sem abrir abas. Recarregue a extensão após atualizar.
+
+## Instalação da integração RepoSprint pelo site
+
+O botão Integrar com o RepoSprint no Histórico de issues solicita o download do ZIP e abre o guia para Chrome/Edge. Extraia em uma pasta permanente e carregue a pasta reposprint na página de extensões com o Modo do desenvolvedor ativo. Faça login no RepoSprint no mesmo navegador e recarregue a ferramenta. A instalação exige confirmação do navegador; o site não instala a extensão silenciosamente.
+
+Ao modificar a extensão, gere o pacote atualizado antes de publicar:
+
+```powershell
+./scripts/package-reposprint.ps1
+```
+
+O pacote público public/downloads/reposprint-extension.zip contém somente os arquivos da extensão e as instruções, sem configurações de usuário ou credenciais.

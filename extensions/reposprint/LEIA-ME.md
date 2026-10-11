@@ -1,7 +1,7 @@
-# Extensão RepoSprint — versão 0.1.3
+# Extensão RepoSprint — versão 0.4.6
 
 1. Abra chrome://extensions ou edge://extensions, ative Modo do desenvolvedor e use Carregar sem compactação.
-2. Selecione C:\Users\francisco.viana\Documents\GitHub\Automatizador\extensions\reposprint.
+2. No site, clique em Integrar com o RepoSprint, extraia o ZIP em uma pasta permanente e selecione a pasta reposprint que contém manifest.json. Para desenvolvedores, a pasta-fonte é extensions/reposprint.
 3. Se já instalada, clique em Recarregar e aceite a nova permissão de acesso a api.reposprint.com se o navegador solicitar.
 4. Faça login no RepoSprint uma vez no mesmo perfil do navegador. Depois pode fechar suas abas.
 5. Na ferramenta, use Adicionar ao RepoSprint no histórico ou abra o ícone da extensão.
