@@ -11,12 +11,11 @@
   const current=document.getElementById('repoIntegrationDialog');if(current){current.showModal();return}
   const direct=window.isSecureContext&&typeof window.showDirectoryPicker==='function';let preparing=false;
   const dialog=node('dialog');dialog.id='repoIntegrationDialog';dialog.className='issue-preview-dialog';dialog.setAttribute('aria-label','Integrar com o RepoSprint');dialog.style.maxWidth='650px';
-  const status=node('p','Deseja preparar a integração com o RepoSprint neste computador?');status.setAttribute('aria-live','polite');dialog.append(node('h2','Integrar com o RepoSprint'),status);
+  const status=node('p',direct?'Vamos conectar em três etapas. Você só precisa instalar uma vez.':'Use Chrome ou Edge no computador para integrar. O download em ZIP está disponível abaixo.');status.setAttribute('aria-live','polite');dialog.append(node('h2','Integrar com o RepoSprint'),status);
   function action(container,text,handler,repo=true){const el=node('button',text);el.type='button';el.className='btn soft';if(repo)el.dataset.repoProcess='';el.addEventListener('click',handler);container.append(el);return el}
   function section(title,text){const box=node('section');box.style.cssText='margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:10px';box.append(node('strong',title),node('p',text));dialog.append(box);return box}
-  const first=section('Preparar integração',direct?'Ao aceitar, o navegador pedirá que você escolha e autorize uma pasta. A ferramenta criará os arquivos da extensão nela.':'Ao aceitar, a ferramenta baixará o ZIP da extensão para você extrair e instalar. Use Chrome ou Edge no computador.');
-  const prepare=action(first,'Aceitar e preparar',async()=>{
-   cancel.hidden=true;second.hidden=false;third.hidden=false;footer.hidden=false;notice.hidden=false;first.querySelector('strong').textContent='1. Preparar extensão';
+  const first=section('1. Preparar extensão',direct?'Escolha onde salvar. A ferramenta cria a pasta pronta, sem ZIP e sem extração.':'Baixe o ZIP, extraia em uma pasta permanente e use a pasta reposprint.');
+  const prepare=action(first,direct?'Escolher pasta e preparar':'Baixar extensão',async()=>{
    if(!direct){download();status.textContent='Download solicitado. Extraia o ZIP e siga a etapa 2.';return}
    preparing=true;prepare.disabled=true;
    try{
@@ -34,14 +33,12 @@
    }catch(error){status.textContent=error.name==='AbortError'?'Escolha de pasta cancelada. Clique novamente quando quiser continuar.':'Não foi possível preparar a pasta. Tente novamente ou use Baixar ZIP.'}
    finally{preparing=false;prepare.disabled=false}
   });
-  const cancel=action(first,'Cancelar',()=>dialog.close(),false);cancel.style.marginLeft='8px';
   const second=section('2. Ativar no navegador','Abra a página de extensões, ative Modo do desenvolvedor e clique em Carregar sem compactação (ou Carregar descompactado). Selecione a pasta preparada na etapa 1.');
-  second.hidden=true;
   const address=/Edg\//.test(navigator.userAgent)?'edge://extensions':'chrome://extensions',url=node('input');url.value=address;url.readOnly=true;url.setAttribute('aria-label','Endereço da página de extensões');url.style.cssText='margin-bottom:8px';second.append(url);
   action(second,'Copiar endereço',async()=>{try{await navigator.clipboard.writeText(address);status.textContent='Endereço copiado. Cole na barra do navegador para abrir a página de extensões.'}catch{url.focus();url.select();status.textContent='Copie o endereço selecionado e cole na barra do navegador.'}});
-  const third=section('3. Conectar sua conta','Entre no RepoSprint com sua conta neste navegador. Depois volte e recarregue a ferramenta.');third.hidden=true;const repo=node('a','Entrar no RepoSprint');repo.className='btn repo-review-link';repo.href='https://reposprint.com/app';repo.target='_blank';repo.rel='noopener noreferrer';third.append(repo);
-  const footer=node('div');footer.className='workflow-actions';footer.hidden=true;
+  const third=section('3. Conectar sua conta','Entre no RepoSprint com sua conta neste navegador. Depois volte e recarregue a ferramenta.');const repo=node('a','Entrar no RepoSprint');repo.className='btn repo-review-link';repo.href='https://reposprint.com/app';repo.target='_blank';repo.rel='noopener noreferrer';third.append(repo);
+  const footer=node('div');footer.className='workflow-actions';
   const check=action(footer,'Verificar instalação',async()=>{check.disabled=true;status.textContent='Verificando…';const found=await detect();status.textContent=found===version?'Extensão pronta! Entre no RepoSprint e recarregue a ferramenta.':found?'Extensão '+found+' encontrada. Prepare a versão '+version+' e carregue a nova pasta na página de extensões.':'Extensão não encontrada nesta página. Conclua a etapa 2 e recarregue a ferramenta.';check.disabled=false});
-  action(footer,'Baixar ZIP',download,false);action(footer,'Fechar',()=>{if(!preparing)dialog.close()},false);const notice=node('p','A escolha da pasta e a ativação precisam da sua confirmação no navegador.');notice.hidden=true;dialog.append(footer,notice);dialog.addEventListener('cancel',event=>{if(preparing)event.preventDefault()});dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();
+  action(footer,'Baixar ZIP',download,false);action(footer,'Fechar',()=>{if(!preparing)dialog.close()},false);dialog.append(footer,node('p','A escolha da pasta e a ativação precisam da sua confirmação no navegador.'));dialog.addEventListener('cancel',event=>{if(preparing)event.preventDefault()});dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();
  });
 })();
