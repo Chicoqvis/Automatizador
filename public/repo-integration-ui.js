@@ -3,7 +3,10 @@
  const version='0.4.6',downloadURL='/public/downloads/reposprint-extension.zip',folderName='reposprint-'+version;
  const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el};
  function download(){const link=node('a');link.href=downloadURL;link.download='reposprint-extension.zip';document.body.append(link);link.click();link.remove()}
- function detect(){return new Promise(resolve=>{const id=crypto.randomUUID(),timer=setTimeout(()=>{window.removeEventListener('message',receive);resolve(null)},2500);function receive(event){if(event.source!==window||event.origin!==location.origin||event.data?.type!=='automacao-repo-process-ready'||event.data.id!==id)return;clearTimeout(timer);window.removeEventListener('message',receive);resolve(event.data.version||null)}window.addEventListener('message',receive);window.postMessage({type:'automacao-repo-process-ping',id},location.origin)})}
+ function detect(){return new Promise(resolve=>{const id=crypto.randomUUID(),timer=setTimeout(()=>{window.removeEventListener('message',receive);button.hidden=false;resolve(null)},2500);function receive(event){if(event.source!==window||event.origin!==location.origin||event.data?.type!=='automacao-repo-process-ready'||event.data.id!==id)return;clearTimeout(timer);window.removeEventListener('message',receive);button.hidden=event.data.version===version;resolve(event.data.version||null)}window.addEventListener('message',receive);window.postMessage({type:'automacao-repo-process-ping',id},location.origin)})}
+ let checkingInstallation=false;
+ async function refreshInstallation(){if(checkingInstallation||document.hidden)return;checkingInstallation=true;try{await detect()}finally{checkingInstallation=false}}
+ button.hidden=true;refreshInstallation();window.addEventListener('focus',refreshInstallation);document.addEventListener('visibilitychange',refreshInstallation);
  button.addEventListener('click',()=>{
   const current=document.getElementById('repoIntegrationDialog');if(current){current.showModal();return}
   const direct=window.isSecureContext&&typeof window.showDirectoryPicker==='function';let preparing=false;
