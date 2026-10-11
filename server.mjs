@@ -783,13 +783,13 @@ const server = http.createServer(async (req, res) => {
     let fileName;
     try { fileName = decodeURIComponent(pathname); } catch { res.writeHead(400); return res.end("URL inválida."); }
     if (fileName === "/") fileName = "/index.html";
-    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js','/public/button-colors.js','/public/auto-sync.js','/public/outside-close.js','/public/repo-process-ui.js','/public/repo-integration-ui.js','/public/downloads/reposprint-extension.zip'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
+    if (!['/index.html','/public/workflow-ui.js','/public/quota-ui.js','/public/memory-ui.js','/public/usage-ui.js','/public/issue-editor-ui.js','/public/github-actions-ui.js','/public/repositories-ui.js','/public/notifications-ui.js','/public/comment-attachments-ui.js','/public/pending-mentions-ui.js','/public/site-dialogs.js','/public/session-ui.js','/public/image-viewer.js','/public/activities-ui.js','/public/button-colors.js','/public/auto-sync.js','/public/outside-close.js','/public/repo-process-ui.js','/public/repo-integration-ui.js','/public/downloads/reposprint-extension.zip','/public/downloads/reposprint-extension.json'].includes(fileName)) { res.writeHead(404); return res.end("Não encontrado."); }
     const filePath = path.resolve(ROOT, "." + fileName);
     if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end("Acesso negado."); }
     fs.readFile(filePath, (error, data) => {
       if (error) { res.writeHead(404); return res.end("Não encontrado."); }
       const ext = path.extname(filePath).toLowerCase();
-      const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".zip": "application/zip" };
+      const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".zip": "application/zip", ".json": "application/json; charset=utf-8" };
       res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream", "Cache-Control": "no-store", ...(ext === ".zip" ? {"Content-Disposition": 'attachment; filename="reposprint-extension.zip"'} : {}) });
       if (method === "HEAD") return res.end(); res.end(data);
     });

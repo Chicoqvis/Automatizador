@@ -265,7 +265,7 @@ Na extensão RepoSprint 0.3.5, o backlog é atualizado a cada minuto quando vis�
 
 ## Instalação da integração RepoSprint pelo site
 
-O botão Integrar com o RepoSprint no Histórico de issues solicita o download do ZIP e abre o guia para Chrome/Edge. Extraia em uma pasta permanente e carregue a pasta reposprint na página de extensões com o Modo do desenvolvedor ativo. Faça login no RepoSprint no mesmo navegador e recarregue a ferramenta. A instalação exige confirmação do navegador; o site não instala a extensão silenciosamente.
+O botão Integrar com o RepoSprint abre um guia de três etapas. Em Chrome/Edge compatíveis, Escolher pasta e preparar solicita uma pasta e cria os arquivos da extensão diretamente nela, usando showDirectoryPicker com permissão readwrite. A extensão ainda precisa ser carregada pelo usuário na página de extensões; depois, ele entra no RepoSprint e recarrega a ferramenta. Baixar ZIP permanece como alternativa. O site não instala a extensão silenciosamente.
 
 Ao modificar a extensão, gere o pacote atualizado antes de publicar:
 
