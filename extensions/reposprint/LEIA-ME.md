@@ -26,3 +26,5 @@ Também é possível abrir a extensão pelo ícone de extensões do navegador e 
 - A validação automatizada utiliza respostas simuladas. O teste real precisa ocorrer no navegador conectado ao RepoSprint.
 
 Para desinstalar, remova a extensão na página de extensões. Para atualizar os arquivos, clique em **Recarregar** nessa mesma página e recarregue a ferramenta.
+
+A versão 0.1.1 agrupa abas do mesmo workspace em uma única opção. O workspace já vem selecionado; a última escolha fica salva neste perfil do navegador. Se essa escolha não estiver aberta, seleciona uma opção disponível. Após atualizar os arquivos, clique em Recarregar na página de extensões e feche/reabra a janela da extensão.
