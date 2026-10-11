@@ -16,3 +16,5 @@ Não solicita nem extrai cookies, senhas ou tokens. O navegador envia as credenc
 Protótipo baseado em chamadas internas sem suporte oficial confirmado. Cookies bloqueados, sessão expirada, permissões do workspace ou validação de origem pelo servidor podem impedir a conexão direta. Não há abertura automática como alternativa, nem alteração dessas proteções. Confira o backlog antes de repetir uma inclusão cuja resposta não foi confirmada.
 
 Os testes usam API simulada; o funcionamento com sua conta real precisa ser testado após instalar/recarregar. Cada perfil e dispositivo precisa da extensão. Para remover, use Remover na página de extensões.
+
+Versão 0.1.4: não há checkbox de confirmação. Após a busca, clique diretamente em Adicionar ao backlog. Resultados com repositório identificado diferente do solicitado continuam bloqueados.
