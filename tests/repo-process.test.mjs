@@ -41,10 +41,14 @@ test('protocolo de consulta é GET, usa workspaceId nas fases e não aceita apro
  globalThis.fetch=async()=>new Response('',{status:429,headers:{'Retry-After':'45'}});const limited=await pageRequest('process.issueList','workspace',1);assert.equal(limited.rateLimited,true);assert.equal(limited.retryAfterMs,45000);assert(!limited.error.includes('HTTP 429'));
  }finally{globalThis.location=oldLocation;globalThis.fetch=oldFetch}
 });
-test('limite de consultas respeita a pausa e repete somente leitura sem perder a página',async()=>{
+test('limite de consultas retorna pausa imediatamente sem repetir a requisição',async()=>{
  const calls=[],pauses=[];let limited=true;
  const request=async(action,workspace,page)=>{calls.push(page);if(limited){limited=false;return {rateLimited:true,retryAfterMs:35000,error:'Pausa automática'}}return {payload:[{result:{data:{issues:[]}}}]}};
- await processRead('workspace','process.issueList',7,request,async ms=>pauses.push(ms));assert.deepEqual(calls,[7,7]);assert(pauses.some(ms=>ms>=34000));
+ await assert.rejects(processRead('workspace','process.issueList',7,request,async ms=>pauses.push(ms)),error=>error.retryAt>Date.now()+34000);assert.deepEqual(calls,[7]);
+});
+test('aprovações do backlog aparecem antes de consultar a lista e sobrevivem a uma pausa',async()=>{
+ const progress=[],calls=[];const request=async action=>{calls.push(action);return action==='backlog.list'?{payload:[{result:{data:[{issueId:'approval',number:3920,title:'Aprovar task',state:'open',currentPhase:'business_approved',phaseLabel:'Aprovação de negócio',phaseStatus:'pending'}]}}]}:{rateLimited:true,retryAfterMs:30000,error:'Pausa automática'}};
+ await assert.rejects(loadProcesses('workspace',request,async()=>{},{approvals:true,onProgress:data=>progress.push(data)}),error=>error.retryAt>Date.now());assert.equal(progress.length,1);assert.equal(progress[0].items[0].number,3920);assert.equal(progress[0].items[0].process.currentPhase,'business_approved');assert.equal(progress[0].partial,true);assert.deepEqual(calls,['backlog.list','process.approvalList']);
 });
 test('abrir processo de uma issue não varre o workspace e confere o repositório',async()=>{
  const calls=[],request=async(action,workspace,value)=>{calls.push({action,value});return {payload:[{result:{data:action==='issue.list'?{issues:[{id:'other',number:42,githubUrl:'https://github.com/other/repo/issues/42'},{id:'correct',number:42,title:'Minha task',githubUrl:'https://github.com/owner/repo/issues/42'}]}:[{issueId:'correct',currentPhase:'business_approved',phaseStatus:'pending'}]}}]}};
@@ -63,7 +67,7 @@ test('consulta individual passa à frente das consultas gerais que aguardam na f
 });
 test('aprovações incluem todos os autores e publicam fases antes da última página',async()=>{
  const rows=Array.from({length:51},(_,i)=>({id:'a-'+i,number:i+1,author:i===50?'other':'Chicoqvis'})),calls=[],progress=[];
- const request=async(action,workspace,value)=>{calls.push(action);return {payload:[{result:{data:action==='process.approvalList'?{total:51,issues:rows.slice((value-1)*50,value*50)}:value.map(id=>({issueId:id,currentPhase:id==='a-0'||id==='a-50'?'business_approved':'analyzed',phaseStatus:'pending'}))}}]}};
+ const request=async(action,workspace,value)=>{calls.push(action);return {payload:[{result:{data:action==='backlog.list'?[]:action==='process.approvalList'?{total:51,issues:rows.slice((value-1)*50,value*50)}:value.map(id=>({issueId:id,currentPhase:id==='a-0'||id==='a-50'?'business_approved':'analyzed',phaseStatus:'pending'}))}}]}};
  const result=await loadProcesses('workspace',request,async()=>{},{approvals:true,onProgress:data=>progress.push(data)});
- assert.deepEqual(calls,['process.approvalList','process.lifecycle.phaseSummaries','process.approvalList','process.lifecycle.phaseSummaries']);assert.equal(progress[0].items.length,50);assert.equal(progress[0].partial,true);assert.equal(progress[0].items[0].process.currentPhase,'business_approved');assert.equal(result.partial,false);assert.deepEqual(result.items.filter(x=>isBusinessApproval(x.process)).map(x=>x.author),['Chicoqvis','other']);
+ assert.deepEqual(calls,['backlog.list','process.approvalList','process.lifecycle.phaseSummaries','process.approvalList','process.lifecycle.phaseSummaries']);assert.equal(progress[1].items.length,50);assert.equal(progress[1].partial,true);assert.equal(progress[1].items[0].process.currentPhase,'business_approved');assert.equal(result.partial,false);assert.deepEqual(result.items.filter(x=>isBusinessApproval(x.process)).map(x=>x.author),['Chicoqvis','other']);
 });

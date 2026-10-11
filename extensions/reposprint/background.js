@@ -16,8 +16,8 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  }
 
  const approvals=message.scope==='approvals',cache=approvals?saved.reposprintApprovalCache:(processCache??saved.reposprintProcessCache),key=workspace+'/'+(approvals?'approvals':'workspace');
- if(cache?.workspace===workspace&&!cache.partial&&Date.now()-cache.checkedAt<180000)return cache;
- if(!processLoads.has(key)){const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);const promise=loadProcesses(workspace,undefined,undefined,{approvals,onProgress:async data=>{await chrome.storage.local.set({reposprintProcessProgress:data});await publishProgress(data)}}).then(async data=>{if(!approvals)processCache=data;await chrome.storage.local.set(approvals?{reposprintApprovalCache:data}:{reposprintProcessCache:data});return data}).finally(()=>{clearInterval(keepAlive);processLoads.delete(key)});processLoads.set(key,promise)}
+ if(cache?.workspace===workspace&&!cache.partial&&Date.now()-cache.checkedAt<180000&&(!approvals||cache.version==='0.4.4'))return cache;
+ if(!processLoads.has(key)){const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);const promise=loadProcesses(workspace,undefined,undefined,{approvals,onProgress:async data=>{await chrome.storage.local.set({reposprintProcessProgress:data});await publishProgress(data)}}).then(async data=>{if(!approvals)processCache=data;await chrome.storage.local.set(approvals?{reposprintApprovalCache:{...data,version:'0.4.4'}}:{reposprintProcessCache:data});return data}).finally(()=>{clearInterval(keepAlive);processLoads.delete(key)});processLoads.set(key,promise)}
  return processLoads.get(key);
 
  })().then(data=>reply({data}),error=>reply({error:error.message,retryAt:error.retryAt}));return true;
