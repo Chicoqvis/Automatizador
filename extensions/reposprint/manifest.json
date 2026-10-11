@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Automatizador · RepoSprint",
+  "version": "0.1.0",
+  "description": "Busca issues e permite adicioná-las ao backlog usando o RepoSprint aberto no navegador.",
+  "permissions": ["scripting"],
+  "host_permissions": ["https://reposprint.com/*"],
+  "action": {"default_title": "Adicionar ao RepoSprint", "default_popup": "popup.html"},
+  "background": {"service_worker": "background.js"},
+  "content_scripts": [{
+    "matches": ["https://automacao-issues-ai.automacao-issue-chico.workers.dev/*"],
+    "js": ["tool.js"]
+  }]
+}

@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RepoSprint</title><link rel="stylesheet" href="popup.css"></head>
+<body><h1>Adicionar ao RepoSprint</h1><p>Mantenha o RepoSprint aberto e conectado neste navegador. Nenhum cookie ou senha será solicitado.</p>
+<form id="searchForm"><label>Workspace<select id="workspace" required><option value="">Abra seu workspace no RepoSprint</option></select></label>
+<label>Repositório GitHub<input id="repository" required placeholder="organização/repositório" pattern="[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+"></label>
+<label>Número da issue<input id="number" type="number" min="1" step="1" required></label><button id="search">Buscar issue</button></form>
+<p id="status" role="status"></p><section id="results"></section><p class="note">Protótipo: usa chamadas internas observadas no RepoSprint. Mudanças no serviço podem exigir ajustes. A inclusão ocorre somente ao clicar no botão de confirmação.</p>
+<script type="module" src="popup.js"></script></body></html>
