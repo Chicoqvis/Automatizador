@@ -7,7 +7,7 @@ export async function returnToAnalysis(workspace,issueId,justification,read=proc
  if(!Array.isArray(before.returnTargets)||!before.returnTargets.some(target=>target.toPhase==='analyzed'))throw Error('O RepoSprint não permite devolver esta issue para Análise nesta fase.');
  // Uma única tentativa de escrita: nunca repetir automaticamente uma devolução.
  const response=await request('processWorkflow.advance',workspace,{issueId,toNodeKey:'analyzed',justification:justification.trim()});
- if(response.error)throw Error(response.error);
+ if(response.error)throw Object.assign(Error(response.error),{code:response.code});
  const result=trpcData(response.payload);
  if(result?.ok!==true)throw Error(result?.failures?.[0]?.message||'O RepoSprint não confirmou a devolução. Confira sua permissão e a fase atual.');
  try{const after=await read(workspace,'process.lifecycle.get',issueId,undefined,undefined,true);return {submitted:true,confirmed:after?.lifecycle?.currentPhase==='analyzed',phase:after?.lifecycle?.currentPhase||null}}

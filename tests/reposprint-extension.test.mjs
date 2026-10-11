@@ -18,3 +18,9 @@ test('chamadas usam sessão da página, endpoints fixos e confirmação explíci
  globalThis.fetch=async()=>{throw Error('timeout')};assert.match((await pageRequest('backlog.add','workspace','id')).error,/antes de repetir/);
  }finally{globalThis.location=oldLocation;globalThis.fetch=oldFetch}
 });
+
+test('estado de autenticação distingue sessão expirada de acesso recusado',async()=>{
+ const oldLocation=globalThis.location,oldFetch=globalThis.fetch;
+ try{globalThis.location={origin:'chrome-extension://test'};globalThis.fetch=async()=>new Response('',{status:401});assert.equal((await pageRequest('backlog.list','workspace')).code,'SESSION_EXPIRED');globalThis.fetch=async()=>new Response('',{status:403});assert.equal((await pageRequest('backlog.list','workspace')).code,'ACCESS_DENIED');}
+ finally{globalThis.location=oldLocation;globalThis.fetch=oldFetch}
+});

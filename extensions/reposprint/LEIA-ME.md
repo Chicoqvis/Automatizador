@@ -1,4 +1,4 @@
-# Extensão RepoSprint — versão 0.4.6
+# Extensão RepoSprint — versão 0.4.7
 
 1. Abra chrome://extensions ou edge://extensions, ative Modo do desenvolvedor e use Carregar sem compactação.
 2. No site, clique em Integrar com o RepoSprint, extraia o ZIP em uma pasta permanente e selecione a pasta reposprint que contém manifest.json. Para desenvolvedores, a pasta-fonte é extensions/reposprint.
@@ -63,3 +63,8 @@ Atualização da interface: Responder na lista de aprovação agora abre um pain
 ### Devolver para Análise — versão 0.4.6
 
 Recarregue a extensão em chrome://extensions e depois recarregue o site. O botão agora abre a justificativa e a confirmação de devolução. A extensão consulta process.lifecycle.get, confere que Análise está em returnTargets e envia uma única chamada processWorkflow.advance com toNodeKey analyzed e justification. Não envia isOverride nem repete escritas automaticamente. As permissões são aplicadas pelo RepoSprint; recusas não geram confirmação de sucesso. Uma nova consulta verifica a fase após o envio. Aprovar análise e Solicitar ajuste continuam indisponíveis nesta interface.
+
+
+### Estado da integração e atualização contínua — versão 0.4.7
+
+A ferramenta verifica a conexão autenticada por uma consulta GET de backlog.list e distingue sessão expirada (401), acesso recusado (403) e pausa temporária. A interface preserva os dados anteriores durante consultas parciais, filtros, notas e rolagem. Uma devolução confirmada atualiza a fase e a lista sem esvaziar a tela. Quando a escrita foi recebida mas a fase ainda não foi confirmada, a ferramenta consulta phaseSummaries em segundo plano; nunca repete a devolução automaticamente. Recarregue a extensão e a ferramenta após atualizar.

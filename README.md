@@ -274,3 +274,7 @@ Ao modificar a extensão, gere o pacote atualizado antes de publicar:
 ```
 
 O pacote público public/downloads/reposprint-extension.zip contém somente os arquivos da extensão e as instruções, sem configurações de usuário ou credenciais.
+
+### Estado e continuidade do RepoSprint
+
+A extensão 0.4.7 permite verificar a conexão autenticada e distinguir sessão expirada, permissão recusada e pausa temporária. Atualizações parciais preservam a lista anterior; os painéis mantêm filtros, rascunhos e rolagem. Devoluções confirmadas atualizam a fase e a lista de aprovação. Se o envio foi recebido mas a nova fase ainda não foi confirmada, a ferramenta consulta a fase em segundo plano sem repetir a escrita. Atualize/recarregue a extensão e a ferramenta após esta versão.

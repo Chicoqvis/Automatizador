@@ -9,7 +9,7 @@ export function processRead(workspace,action,value,request=pageRequest,pause=wai
  const delay=nextRequestAt-Date.now();if(delay>60000||(request===pageRequest&&delay>1500))throw Object.assign(Error('A consulta será retomada automaticamente após a pausa solicitada pelo RepoSprint.'),{retryAt:nextRequestAt});if(delay>0)await pause(delay);
  const result=await request(action,workspace,value);nextRequestAt=Date.now()+1500;
  if(result.rateLimited){nextRequestAt=Date.now()+Math.max(result.retryAfterMs||30000,30000);const error=Error(result.error);error.retryAt=nextRequestAt;throw error}
- if(result.error)throw Error(result.error);return trpcData(result.payload);
+ if(result.error)throw Object.assign(Error(result.error),{code:result.code});return trpcData(result.payload);
  }};return new Promise((resolve,reject)=>{const job={run,resolve,reject};priority?queue.unshift(job):queue.push(job);runNext()});
 }
 export async function loadIssueProcess(workspace,ref,request=pageRequest,pause=wait,knownRow=null){

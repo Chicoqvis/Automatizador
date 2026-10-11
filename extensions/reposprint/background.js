@@ -7,6 +7,8 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  (async()=>{const saved=await chrome.storage.local.get(['reposprintWorkspace','reposprintProcessCache','reposprintIssueCache','reposprintApprovalCache','reposprintProcessProgress']),workspace=saved.reposprintWorkspace||'SxoNSBNfOj5hhl6dw2UmKAgFUqKdF33y';
 
 
+ if(message.scope==='health'){const rows=await processRead(workspace,'backlog.list',undefined,undefined,undefined,true);if(!Array.isArray(rows))throw Error('Resposta de conexão inválida.');return {connected:true,checkedAt:Date.now()}}
+ if(message.scope==='confirmation'){if(typeof message.issueId!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(message.issueId))throw Error('Issue inválida.');const phases=await processRead(workspace,'process.lifecycle.phaseSummaries',[message.issueId],undefined,undefined,true);if(!Array.isArray(phases))throw Error('Resposta de fase inválida.');return {workspace,checkedAt:Date.now(),process:phases.find(row=>row.issueId===message.issueId)||null}}
  if(message.scope==='return-to-analysis'){
  const returnKey=workspace+'/'+message.issueId;if(returnJobs.has(returnKey))throw Error('Uma devolução desta issue já está em andamento.');returnJobs.add(returnKey);
  try{const result=await returnToAnalysis(workspace,message.issueId,message.justification);processRevision++;processLoads.clear();processCache=null;await chrome.storage.local.remove(['reposprintProcessCache','reposprintIssueCache','reposprintApprovalCache','reposprintProcessProgress']);return result}finally{returnJobs.delete(returnKey)}
@@ -23,11 +25,11 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  }
 
  const approvals=message.scope==='approvals',cache=approvals?saved.reposprintApprovalCache:(processCache??saved.reposprintProcessCache),key=workspace+'/'+(approvals?'approvals':'workspace');
- if(cache?.workspace===workspace&&!cache.partial&&Date.now()-cache.checkedAt<180000&&(!approvals||cache.version==='0.4.6'))return cache;
- if(!processLoads.has(key)){const revision=processRevision;const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);const promise=loadProcesses(workspace,undefined,undefined,{approvals,onProgress:async data=>{if(revision!==processRevision)return;await chrome.storage.local.set({reposprintProcessProgress:data});await publishProgress(data)}}).then(async data=>{if(revision!==processRevision)return data;if(!approvals)processCache=data;await chrome.storage.local.set(approvals?{reposprintApprovalCache:{...data,version:'0.4.6'}}:{reposprintProcessCache:data});return data}).finally(()=>{clearInterval(keepAlive);if(revision===processRevision)processLoads.delete(key)});processLoads.set(key,promise)}
+ if(cache?.workspace===workspace&&!cache.partial&&Date.now()-cache.checkedAt<180000&&(!approvals||cache.version==='0.4.7'))return cache;
+ if(!processLoads.has(key)){const revision=processRevision;const keepAlive=setInterval(()=>chrome.runtime.getPlatformInfo().catch(()=>{}),20000);const promise=loadProcesses(workspace,undefined,undefined,{approvals,onProgress:async data=>{if(revision!==processRevision)return;await chrome.storage.local.set({reposprintProcessProgress:data});await publishProgress(data)}}).then(async data=>{if(revision!==processRevision)return data;if(!approvals)processCache=data;await chrome.storage.local.set(approvals?{reposprintApprovalCache:{...data,version:'0.4.7'}}:{reposprintProcessCache:data});return data}).finally(()=>{clearInterval(keepAlive);if(revision===processRevision)processLoads.delete(key)});processLoads.set(key,promise)}
  return processLoads.get(key);
 
- })().then(data=>reply({data}),error=>reply({error:error.message,retryAt:error.retryAt}));return true;
+ })().then(data=>reply({data}),error=>reply({error:error.message,retryAt:error.retryAt,code:error.code}));return true;
 });
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if(!['open-reposprint','open-reposprint-backlog'].includes(message?.type)||sender.url?.split('/')[2]!=='automacao-issues-ai.automacao-issue-chico.workers.dev')return;
