@@ -8,7 +8,7 @@ export function candidates(data,number){
 export function trpcData(payload){const result=Array.isArray(payload)?payload[0]:payload;if(result?.error)throw Error('RepoSprint recusou a ação. Confira seu acesso e a sessão.');if(!result?.result||!('data'in result.result))throw Error('Resposta inesperada do RepoSprint. Nenhuma confirmação recebida.');const data=result.result.data;return data?.json??data}
 // Executada na aba RepoSprint; não lê nem retorna cookies ou tokens.
 export async function pageRequest(action,workspace,value){
- if(location.origin!=='https://reposprint.com')return {error:'Abra uma aba do RepoSprint.'};
+ if(location.origin!=='https://reposprint.com'&&!location.origin.startsWith('chrome-extension://'))return {error:'Abra esta ação pela extensão.'};
  if(!['issue.list','backlog.add'].includes(action)||!/^[-a-zA-Z0-9_]{1,200}$/.test(workspace))return {error:'Parâmetros inválidos.'};
  if(action==='issue.list'&&(!Number.isSafeInteger(value)||value<1)||action==='backlog.add'&&(typeof value!=='string'||!/^[-a-zA-Z0-9_]{1,200}$/.test(value)))return {error:'Issue inválida.'};
  const input=action==='issue.list'?{organizationId:workspace,search:String(value),sortBy:'createdAt',sortOrder:'desc',page:1,limit:50}:{organizationId:workspace,issueIds:[value]};

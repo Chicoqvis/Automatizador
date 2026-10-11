@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Automatizador · RepoSprint",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Busca issues e permite adicioná-las ao backlog usando o RepoSprint aberto no navegador.",
   "permissions": [
-    "scripting",
     "storage"
   ],
   "host_permissions": [
-    "https://reposprint.com/*"
+    "https://reposprint.com/*",
+    "https://api.reposprint.com/*"
   ],
   "action": {
     "default_title": "Adicionar ao RepoSprint",

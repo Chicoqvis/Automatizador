@@ -252,3 +252,5 @@ O painel carrega ao abrir e ao clicar Atualizar. Permite pesquisar título, núm
 ## Extensão RepoSprint (protótipo)
 
 A pasta extensions/reposprint contém uma extensão Manifest V3 para Chrome/Edge. Consulte extensions/reposprint/LEIA-ME.md para instalação. A extensão acrescenta Adicionar ao RepoSprint no histórico da ferramenta; a inclusão é confirmada separadamente na janela da extensão. Usa a aba RepoSprint conectada, sem copiar cookies para o servidor. O protocolo observado é issue.list para busca e backlog.add para inclusão; não existe integração oficial confirmada. Testes simulados cobrem validação e confirmação; o funcionamento real depende da sessão, permissões e protocolo atual do RepoSprint. Não exige publicar alterações no Worker.
+
+Atualização RepoSprint 0.1.3: as chamadas agora são diretas a api.reposprint.com a partir da extensão, com a sessão enviada pelo navegador. Não requer aba RepoSprint aberta nem abre abas automaticamente. A permissão scripting foi removida; foi adicionado acesso ao domínio da API. Sessão expirada ou restrições do serviço exigem login manual e podem impedir o fluxo. Consulte o guia atualizado da extensão.

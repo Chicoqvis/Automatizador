@@ -1,30 +1,18 @@
-# Instalação no Chrome ou Edge
+# Extensão RepoSprint — versão 0.1.3
 
-1. Abra `chrome://extensions` (Chrome) ou `edge://extensions` (Edge).
-2. Ative **Modo do desenvolvedor**.
-3. Clique em **Carregar sem compactação** e selecione esta pasta, onde está `manifest.json`:
+1. Abra chrome://extensions ou edge://extensions, ative Modo do desenvolvedor e use Carregar sem compactação.
+2. Selecione C:\Users\francisco.viana\Documents\GitHub\Automatizador\extensions\reposprint.
+3. Se já instalada, clique em Recarregar e aceite a nova permissão de acesso a api.reposprint.com se o navegador solicitar.
+4. Faça login no RepoSprint uma vez no mesmo perfil do navegador. Depois pode fechar suas abas.
+5. Na ferramenta, use Adicionar ao RepoSprint no histórico ou abra o ícone da extensão.
+6. Confira workspace, repositório e número; clique em Buscar issue. Confira o resultado e confirme a inclusão.
 
-   `C:\Users\francisco.viana\Documents\GitHub\Automatizador\extensions\reposprint`
+A conexão agora ocorre diretamente na extensão. Nenhuma aba do RepoSprint é aberta automaticamente. O link Abrir RepoSprint só abre quando você clicar nele. Se a sessão expirar ou o acesso for recusado, entre novamente por esse link e retorne à extensão.
 
-4. Abra seu workspace em https://reposprint.com e faça login normalmente.
-5. Recarregue a ferramenta de issues. No histórico, clique em **Adicionar ao RepoSprint**.
-6. Na janela aberta, selecione a aba do workspace e clique em **Buscar issue**.
-7. Confira a tarefa e o repositório. Se o serviço retornar somente o ID do repositório, abra **Conferir issue no RepoSprint** e verifique antes de marcar a confirmação.
-8. Marque a confirmação e clique em **Confirmar inclusão no backlog**.
+O workspace salvo vem selecionado mesmo sem abas abertas. Quando há abas abertas, os workspaces são agrupados sem duplicação. A busca procura o número exato nos primeiros 50 resultados; confirme o repositório, pois números podem se repetir.
 
-Também é possível abrir a extensão pelo ícone de extensões do navegador e informar o repositório e o número manualmente. Fixe o ícone para facilitar.
+Não solicita nem extrai cookies, senhas ou tokens. O navegador envia as credenciais da sessão ao próprio RepoSprint nas requisições. Nenhuma credencial é enviada ao servidor da ferramenta. O cookie exposto anteriormente deve ser invalidado encerrando a sessão e entrando novamente.
 
-## Limites do protótipo
+Protótipo baseado em chamadas internas sem suporte oficial confirmado. Cookies bloqueados, sessão expirada, permissões do workspace ou validação de origem pelo servidor podem impedir a conexão direta. Não há abertura automática como alternativa, nem alteração dessas proteções. Confira o backlog antes de repetir uma inclusão cuja resposta não foi confirmada.
 
-- Não solicita, lê ou armazena cookies, senhas ou tokens. A requisição acontece na aba do RepoSprint com sua sessão ativa e as permissões daquela conta.
-- Não utiliza o cookie compartilhado anteriormente. Encerre a sessão exposta e entre novamente antes de testar.
-- Não inclui nada automaticamente ao criar issues. Busca e inclusão dependem de cliques separados; não há repetição automática após erro.
-- Usa chamadas internas observadas, sem suporte oficial confirmado. Pode exigir ajustes se o RepoSprint mudar seu protocolo, bloquear a requisição ou exigir validações adicionais.
-- A busca verifica o número exato nos primeiros 50 resultados. Issues recém-criadas podem precisar aguardar sincronização. Vários repositórios podem ter o mesmo número.
-- Em caso de erro ou resposta perdida, confira o backlog no RepoSprint antes de tentar novamente. A proteção contra duplicidade depende do serviço.
-- Cada dispositivo e perfil do navegador precisa instalar a extensão. Nenhuma credencial é enviada ao servidor da ferramenta.
-- A validação automatizada utiliza respostas simuladas. O teste real precisa ocorrer no navegador conectado ao RepoSprint.
-
-Para desinstalar, remova a extensão na página de extensões. Para atualizar os arquivos, clique em **Recarregar** nessa mesma página e recarregue a ferramenta.
-
-A versão 0.1.1 agrupa abas do mesmo workspace em uma única opção. O workspace já vem selecionado; a última escolha fica salva neste perfil do navegador. Se essa escolha não estiver aberta, seleciona uma opção disponível. Após atualizar os arquivos, clique em Recarregar na página de extensões e feche/reabra a janela da extensão.
+Os testes usam API simulada; o funcionamento com sua conta real precisa ser testado após instalar/recarregar. Cada perfil e dispositivo precisa da extensão. Para remover, use Remover na página de extensões.
