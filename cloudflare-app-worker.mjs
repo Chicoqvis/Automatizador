@@ -417,22 +417,21 @@ async function route(request, env) {
     let login=identity?.login||connection?.githubUser||'';
     if(!login){const profile=await githubApi('/user',token);if(!profile.ok)throw fail('Não foi possível identificar a conta GitHub conectada.',profile.status);login=(await profile.json()).login||''}
     if(!/^[A-Za-z0-9-]{1,39}$/.test(login))throw fail('Não foi possível identificar o autor da conta GitHub.',502);
-    const issues=[],totalPages=10;let totalCount=0;
-    for(let page=1;page<=totalPages;page++){
-      const query='author:'+login+' is:issue';
+    const query='author:'+login+' is:issue',fetchPage=async page=>{
       const response=await githubApi('/search/issues?q='+encodeURIComponent(query)+'&per_page=100&page='+page+'&sort=created&order=desc',token);
       if(!response.ok)throw fail('Não foi possível consultar as issues criadas por '+login+' no GitHub. '+await githubError(response),response.status);
-      const data=await response.json();if(!Array.isArray(data.items))throw fail('GitHub retornou uma lista de issues inválida.',502);
-      totalCount=Number(data.total_count)||0;
-      for(const item of data.items){
-        if(item.pull_request||item.user?.login?.toLowerCase()!==login.toLowerCase()||!Number.isSafeInteger(item.number))continue;
-        let url;try{url=new URL(item.html_url)}catch{continue}
-        const match=url.origin==='https://github.com'&&url.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)$/i);
-        if(!match||Number(match[2])!==item.number)continue;
-        const createdAt=Date.parse(item.created_at);if(!Number.isFinite(createdAt))continue;
-        issues.push({...validateHistoryEntry({number:item.number,title:item.title,url:url.href,repository:match[1],createdAt,labels:(item.labels||[]).map(label=>typeof label==='string'?label:label.name).filter(Boolean),issueState:item.state==='closed'?'closed':'open',stateCheckedAt:Date.now(),stateCheckError:'',projects:[]}),source:'github-author'});
-      }
-      if(data.items.length<100||page*100>=Math.min(totalCount,1000))break;
+      const data=await response.json();if(!Array.isArray(data.items))throw fail('GitHub retornou uma lista de issues inválida.',502);return data;
+    };
+    const first=await fetchPage(1),totalCount=Number(first.total_count)||0,totalPages=Math.min(10,Math.max(1,Math.ceil(Math.min(totalCount,1000)/100)));
+    const pages=[first];if(totalPages>1)pages.push(...await Promise.all(Array.from({length:totalPages-1},(_,index)=>fetchPage(index+2))));
+    const issues=[];
+    for(const data of pages)for(const item of data.items){
+      if(item.pull_request||item.user?.login?.toLowerCase()!==login.toLowerCase()||!Number.isSafeInteger(item.number))continue;
+      let url;try{url=new URL(item.html_url)}catch{continue}
+      const match=url.origin==='https://github.com'&&url.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)$/i);
+      if(!match||Number(match[2])!==item.number)continue;
+      const createdAt=Date.parse(item.created_at);if(!Number.isFinite(createdAt))continue;
+      issues.push({...validateHistoryEntry({number:item.number,title:item.title,url:url.href,repository:match[1],createdAt,labels:(item.labels||[]).map(label=>typeof label==='string'?label:label.name).filter(Boolean),issueState:item.state==='closed'?'closed':'open',stateCheckedAt:Date.now(),stateCheckError:'',projects:[]}),source:'github-author'});
     }
     for(let offset=0;offset<issues.length;offset+=100){const batch=issues.slice(offset,offset+100);await env.DB.batch(batch.map(entry=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt)))}
     return json({issues,login,totalCount,limited:totalCount>1000});
