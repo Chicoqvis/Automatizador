@@ -165,8 +165,11 @@ const ids=["title","requester","date","units","frequency","problem","description
 const required=ids.filter(function(x){return x!=="otherMotivation"});
 const generated=["title","requester","units","problem","description","impacts","today","nonimplementation","motivation","otherMotivation","urgency"];
 const names={title:"Título",requester:"Solicitante",date:"Data",units:"Unidades impactadas",frequency:"Geral ou pontual",problem:"Problema",description:"Descrição",impacts:"Outros módulos/relatórios",today:"Processo atual",nonimplementation:"Impacto da não implementação",motivation:"Motivação",otherMotivation:"Outra motivação",urgency:"Urgência"};
-const $=function(id){return document.getElementById(id)}, userStorageSuffix=encodeURIComponent($("authUserLabel").textContent), key="clareia.issueDraft.v1."+userStorageSuffix, narrativesKey="clareia.savedNarratives.v1."+userStorageSuffix, issueHistoryKey="automacao.issueHistory.v1."+userStorageSuffix, githubRepoKey="automacao.githubRepository.v1."+userStorageSuffix, rememberGithubRepoKey="automacao.rememberGithubRepository.v1."+userStorageSuffix;const selectedLabelNames=new Set(),aiUndoStack=[];let githubConnected=false,githubLabels=[],githubProjects=[],aiClassification="",aiAppliedLabel="",savedNarratives=[],issueHistory=[],legacyIssueHistory=[];
+const $=function(id){return document.getElementById(id)}, userStorageSuffix=encodeURIComponent($("authUserLabel").textContent), key="clareia.issueDraft.v1."+userStorageSuffix, narrativesKey="clareia.savedNarratives.v1."+userStorageSuffix, issueHistoryKey="automacao.issueHistory.v1."+userStorageSuffix, githubRepoKey="automacao.githubRepository.v1."+userStorageSuffix, rememberGithubRepoKey="automacao.rememberGithubRepository.v1."+userStorageSuffix;const selectedLabelNames=new Set(),aiUndoStack=[];let githubConnected=false,githubLabels=[],githubProjects=[],aiClassification="",aiAppliedLabel="",savedNarratives=[],issueHistory=[],legacyIssueHistory=[];let restoringLastProjectPreference=false;
 const now=new Date();$("date").value=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
+function lastProjectPreferenceKey(){const repository=$("githubTarget").textContent.replace(/^Conectado a\\s*/,"").trim().toLowerCase();return repository?"automacao.lastProjectStatus.v1."+userStorageSuffix+"."+encodeURIComponent(repository):""}
+function readLastProjectPreference(){try{const key=lastProjectPreferenceKey(),value=key&&localStorage.getItem(key);return value?JSON.parse(value):null}catch(e){return null}}
+function rememberLastProjectPreference(projectId,statusFieldId,statusOptionId){if(restoringLastProjectPreference)return;try{const key=lastProjectPreferenceKey();if(key)localStorage.setItem(key,JSON.stringify({projectId:projectId||"",statusFieldId:statusFieldId||"",statusOptionId:statusOptionId||""}))}catch(e){}}
 try{$("rememberGithubRepo").checked=localStorage.getItem(rememberGithubRepoKey)==="true";if($("rememberGithubRepo").checked){$("githubRepo").value=localStorage.getItem(githubRepoKey)||""}}catch(e){}
 $("rememberGithubRepo").addEventListener("change",function(){try{localStorage.setItem(rememberGithubRepoKey,this.checked?"true":"false");if(!this.checked)localStorage.removeItem(githubRepoKey);else if($("githubRepo").value.trim())localStorage.setItem(githubRepoKey,$("githubRepo").value.trim())}catch(e){}});
 $("githubRepo").addEventListener("input",function(){if($("rememberGithubRepo").checked){try{localStorage.setItem(githubRepoKey,this.value.trim())}catch(e){}}});
@@ -530,6 +533,12 @@ async function loadGithubOptions(){
     const availableLabelNames=new Set(githubLabels.map(function(label){return label.name}));selectedLabelNames.forEach(function(name){if(!availableLabelNames.has(name))selectedLabelNames.delete(name)});
     renderLabels();applyClassificationLabel();const select=$("projectSelect");select.replaceChildren(new Option("Não adicionar a um projeto",""));
     githubProjects.filter(project=>!window.isProjectHidden(project.id)).forEach(function(project){select.add(new Option(project.title+" · #"+project.number,project.id))});
+    const lastProject=readLastProjectPreference();
+    if(lastProject&&lastProject.projectId&&Array.from(select.options).some(option=>option.value===lastProject.projectId)){
+      select.value=lastProject.projectId;restoringLastProjectPreference=true;select.dispatchEvent(new Event("change"));restoringLastProjectPreference=false;
+      const statusSelect=$("projectStatus");
+      if(lastProject.statusFieldId===statusSelect.dataset.fieldId&&Array.from(statusSelect.options).some(option=>option.value===lastProject.statusOptionId))statusSelect.value=lastProject.statusOptionId;
+    }
     feedback.textContent=githubLabels.length+" labels e "+githubProjects.length+" projetos carregados.";
     if(data.projectsError)feedback.textContent+=" Projetos indisponíveis: "+data.projectsError+" Confira Projects: Read and write no token.";
     else if(!githubProjects.length)feedback.textContent+=" Se esperava encontrar projetos, confira a permissão Projects do token.";
@@ -544,11 +553,14 @@ $("labelSearch").addEventListener("input",renderLabels);
 $("projectSelect").addEventListener("change",function(){
   extraProjectPicker.exclude($("projectSelect").value);const project=githubProjects.find(function(item){return item.id===$("projectSelect").value}),box=$("projectStatusBox"),select=$("projectStatus");
   select.replaceChildren(new Option("Selecione uma coluna",""));select.dataset.fieldId="";
-  if(!project||!project.statusField){box.hidden=true;return}
+  if(!project||!project.statusField){box.hidden=true;if(!restoringLastProjectPreference)rememberLastProjectPreference(select.value,"","");return}
   select.dataset.fieldId=project.statusField.id;
   project.statusField.options.forEach(function(option){select.add(new Option(option.name,option.id))});
   box.hidden=false;
+  if(!restoringLastProjectPreference)rememberLastProjectPreference($("projectSelect").value,project.statusField.id,"");
+  else {const lastProject=readLastProjectPreference();if(lastProject&&lastProject.statusFieldId===project.statusField.id&&Array.from(select.options).some(function(option){return option.value===lastProject.statusOptionId}))select.value=lastProject.statusOptionId}
 });
+$("projectStatus").addEventListener("change",function(){rememberLastProjectPreference($("projectSelect").value,this.dataset.fieldId||"",this.value)});
 $("disconnectGithub").addEventListener("click",async function(){
   try{await fetch("/api/github/disconnect",{method:"POST"})}catch(e){}
   githubConnected=false;selectedLabelNames.clear();extraProjectPicker.restore([]);aiAppliedLabel="";
