@@ -417,24 +417,66 @@ async function route(request, env) {
     let login=identity?.login||connection?.githubUser||'';
     if(!login){const profile=await githubApi('/user',token);if(!profile.ok)throw fail('Não foi possível identificar a conta GitHub conectada.',profile.status);login=(await profile.json()).login||''}
     if(!/^[A-Za-z0-9-]{1,39}$/.test(login))throw fail('Não foi possível identificar o autor da conta GitHub.',502);
-    const query='author:'+login+' is:issue',fetchPage=async page=>{
-      const response=await githubApi('/search/issues?q='+encodeURIComponent(query)+'&per_page=100&page='+page+'&sort=created&order=desc',token);
+    const now=Date.now(),day=86400000,utcStart=(value)=>{const date=new Date(value);return Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate())},dateText=(value)=>new Date(value).toISOString().slice(0,10),tomorrow=utcStart(now)+day,baseQuery='author:'+login+' is:issue',forceRefresh=url.searchParams.get('refresh')==='1';
+    let syncRow=null,cacheAvailable=true;
+    try{syncRow=await env.DB.prepare('SELECT login,last_synced_at,initial_scan_done FROM github_my_issue_sync WHERE user_id=?').bind(userId).first()}catch(error){if(/no such table/i.test(error.message||''))cacheAvailable=false;else throw error}
+    if(cacheAvailable&&syncRow&&syncRow.login.toLowerCase()!==login.toLowerCase()){
+      await env.DB.batch([env.DB.prepare('DELETE FROM github_my_issue_cache WHERE user_id=?').bind(userId),env.DB.prepare('DELETE FROM github_my_issue_sync WHERE user_id=?').bind(userId)]);syncRow=null;
+    }
+    if(cacheAvailable&&syncRow?.initial_scan_done&&now-Number(syncRow.last_synced_at)<300000&&!forceRefresh){
+      const cached=await env.DB.prepare('SELECT entry FROM github_my_issue_cache WHERE user_id=? ORDER BY created_at DESC,repository,number').bind(userId).all();
+      return json({issues:cached.results.map(row=>JSON.parse(row.entry)),login,totalCount:cached.results.length,limited:false,cached:true,lastSyncedAt:Number(syncRow.last_synced_at)});
+    }
+    const pending=[],limit=4;let active=0;
+    const withGitHubSlot=async task=>{if(active>=limit)await new Promise(resolve=>pending.push(resolve));else active++;try{return await task()}finally{active--;const next=pending.shift();if(next){active++;next()}}};
+    const fetchPage=async(query,page)=>{
+      const response=await withGitHubSlot(()=>githubApi('/search/issues?q='+encodeURIComponent(query)+'&per_page=100&page='+page+'&sort=created&order=desc',token));
       if(!response.ok)throw fail('Não foi possível consultar as issues criadas por '+login+' no GitHub. '+await githubError(response),response.status);
       const data=await response.json();if(!Array.isArray(data.items))throw fail('GitHub retornou uma lista de issues inválida.',502);return data;
     };
-    const first=await fetchPage(1),totalCount=Number(first.total_count)||0,totalPages=Math.min(10,Math.max(1,Math.ceil(Math.min(totalCount,1000)/100)));
-    const pages=[first];if(totalPages>1)pages.push(...await Promise.all(Array.from({length:totalPages-1},(_,index)=>fetchPage(index+2))));
-    const issues=[];
-    for(const data of pages)for(const item of data.items){
-      if(item.pull_request||item.user?.login?.toLowerCase()!==login.toLowerCase()||!Number.isSafeInteger(item.number))continue;
-      let url;try{url=new URL(item.html_url)}catch{continue}
-      const match=url.origin==='https://github.com'&&url.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)$/i);
-      if(!match||Number(match[2])!==item.number)continue;
-      const createdAt=Date.parse(item.created_at);if(!Number.isFinite(createdAt))continue;
-      issues.push({...validateHistoryEntry({number:item.number,title:item.title,url:url.href,repository:match[1],createdAt,labels:(item.labels||[]).map(label=>typeof label==='string'?label:label.name).filter(Boolean),issueState:item.state==='closed'?'closed':'open',stateCheckedAt:Date.now(),stateCheckError:'',projects:[]}),source:'github-author'});
+    const collectRange=async(kind,startAt,endAt)=>{
+      const query=baseQuery+' '+kind+':>='+dateText(startAt)+' '+kind+':<'+dateText(endAt),first=await fetchPage(query,1),count=Number(first.total_count)||0;
+      if(count>1000){
+        if(endAt-startAt<=day){const error=new Error('MY_ISSUES_DAY_LIMIT');error.code='MY_ISSUES_DAY_LIMIT';throw error}
+        const midpoint=startAt+Math.max(1,Math.floor((endAt-startAt)/(2*day)))*day;
+        if(midpoint>=endAt)throw new Error('Não foi possível dividir um intervalo de busca do GitHub.');
+        const [left,right]=await Promise.all([collectRange(kind,startAt,midpoint),collectRange(kind,midpoint,endAt)]);
+        return {items:left.items.concat(right.items),totalCount:left.totalCount+right.totalCount};
+      }
+      const pageCount=Math.ceil(count/100),rest=pageCount>1?await Promise.all(Array.from({length:pageCount-1},(_,index)=>fetchPage(query,index+2))):[];
+      return {items:first.items.concat(...rest.map(result=>result.items)),totalCount:count};
+    };
+    const scanAll=()=>collectRange('created',Date.UTC(2008,0,1),tomorrow);
+    let scan,fullScan=!syncRow?.initial_scan_done;
+    if(fullScan)scan=await scanAll();
+    else{
+      const from=Math.max(Date.UTC(2008,0,1),utcStart(Number(syncRow.last_synced_at))-day);
+      try{scan=await collectRange('updated',from,tomorrow)}catch(error){if(error?.code!=='MY_ISSUES_DAY_LIMIT')throw error;scan=await scanAll();fullScan=true}
     }
-    for(let offset=0;offset<issues.length;offset+=100){const batch=issues.slice(offset,offset+100);await env.DB.batch(batch.map(entry=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt)))}
-    return json({issues,login,totalCount,limited:totalCount>1000});
+    const unique=new Map();
+    for(const item of scan.items){
+      if(item.pull_request||item.user?.login?.toLowerCase()!==login.toLowerCase()||!Number.isSafeInteger(item.number))continue;
+      let issueUrl;try{issueUrl=new URL(item.html_url)}catch{continue}
+      const match=issueUrl.origin==='https://github.com'&&issueUrl.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)$/i);
+      if(!match||Number(match[2])!==item.number)continue;
+      const createdAt=Date.parse(item.created_at),updatedAt=Date.parse(item.updated_at||item.created_at);if(!Number.isFinite(createdAt)||!Number.isFinite(updatedAt))continue;
+      const entry={...validateHistoryEntry({number:item.number,title:item.title,url:issueUrl.href,repository:match[1],createdAt,labels:(item.labels||[]).map(label=>typeof label==='string'?label:label.name).filter(Boolean),issueState:item.state==='closed'?'closed':'open',stateCheckedAt:now,stateCheckError:'',projects:[]}),source:'github-author'};
+      unique.set(match[1].toLowerCase()+'#'+item.number,{entry,createdAt,updatedAt});
+    }
+    const changed=[...unique.values()];
+    if(!cacheAvailable){
+      for(let offset=0;offset<changed.length;offset+=100){const batch=changed.slice(offset,offset+100);await env.DB.batch(batch.map(({entry,createdAt})=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),createdAt)))}
+      return json({issues:changed.map(row=>row.entry),login,totalCount:fullScan?scan.totalCount:changed.length,limited:false,cached:false});
+    }
+    const writes=[];
+    for(const {entry,createdAt,updatedAt} of changed){
+      writes.push(env.DB.prepare('INSERT INTO github_my_issue_cache(user_id,repository,number,entry,created_at,github_updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,repository,number) DO UPDATE SET entry=excluded.entry,created_at=excluded.created_at,github_updated_at=excluded.github_updated_at').bind(userId,entry.repository,entry.number,JSON.stringify(entry),createdAt,updatedAt));
+      writes.push(env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),createdAt));
+    }
+    for(let offset=0;offset<writes.length;offset+=100)await env.DB.batch(writes.slice(offset,offset+100));
+    await env.DB.prepare('INSERT INTO github_my_issue_sync(user_id,login,last_synced_at,initial_scan_done) VALUES(?,?,?,1) ON CONFLICT(user_id) DO UPDATE SET login=excluded.login,last_synced_at=excluded.last_synced_at,initial_scan_done=1').bind(userId,login,now).run();
+    const all=await env.DB.prepare('SELECT entry FROM github_my_issue_cache WHERE user_id=? ORDER BY created_at DESC,repository,number').bind(userId).all();
+    return json({issues:all.results.map(row=>JSON.parse(row.entry)),login,totalCount:all.results.length,limited:false,cached:false,lastSyncedAt:now,incremental:!fullScan});
   }
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
   const action=path.match(/^\/api\/history\/(labels|comments|projects|comment-draft)$/);
