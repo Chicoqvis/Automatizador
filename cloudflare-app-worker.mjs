@@ -417,7 +417,7 @@ async function route(request, env) {
     let login=identity?.login||connection?.githubUser||'';
     if(!login){const profile=await githubApi('/user',token);if(!profile.ok)throw fail('Não foi possível identificar a conta GitHub conectada.',profile.status);login=(await profile.json()).login||''}
     if(!/^[A-Za-z0-9-]{1,39}$/.test(login))throw fail('Não foi possível identificar o autor da conta GitHub.',502);
-    const now=Date.now(),day=86400000,utcStart=(value)=>{const date=new Date(value);return Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate())},dateText=(value)=>new Date(value).toISOString().slice(0,10),tomorrow=utcStart(now)+day,baseQuery='author:'+login+' is:issue',forceRefresh=url.searchParams.get('refresh')==='1';
+    const now=Date.now(),forceRefresh=url.searchParams.get('refresh')==='1';
     let syncRow=null,cacheAvailable=true;
     try{syncRow=await env.DB.prepare('SELECT login,last_synced_at,initial_scan_done FROM github_my_issue_sync WHERE user_id=?').bind(userId).first()}catch(error){if(/no such table/i.test(error.message||''))cacheAvailable=false;else throw error}
     if(cacheAvailable&&syncRow&&syncRow.login.toLowerCase()!==login.toLowerCase()){
@@ -429,32 +429,26 @@ async function route(request, env) {
     }
     const pending=[],limit=4;let active=0;
     const withGitHubSlot=async task=>{if(active>=limit)await new Promise(resolve=>pending.push(resolve));else active++;try{return await task()}finally{active--;const next=pending.shift();if(next){active++;next()}}};
-    const fetchPage=async(query,page)=>{
-      const response=await withGitHubSlot(()=>githubApi('/search/issues?q='+encodeURIComponent(query)+'&per_page=100&page='+page+'&sort=created&order=desc',token));
+    const fetchPage=async(page,since)=>{
+      const params=new URLSearchParams({filter:'created',state:'all',per_page:'100',page:String(page),sort:'updated',direction:'desc'});if(since)params.set('since',since);
+      const response=await withGitHubSlot(()=>githubApi('/issues?'+params.toString(),token));
       if(!response.ok)throw fail('Não foi possível consultar as issues criadas por '+login+' no GitHub. '+await githubError(response),response.status);
-      const data=await response.json();if(!Array.isArray(data.items))throw fail('GitHub retornou uma lista de issues inválida.',502);return data;
+      const items=await response.json();if(!Array.isArray(items))throw fail('GitHub retornou uma lista de issues inválida.',502);
+      const link=response.headers.get('Link')||'',lastMatch=link.match(/<[^>]*[?&]page=(\d+)[^>]*>;\s*rel="last"/i),lastPage=lastMatch?Number(lastMatch[1]):null;
+      return {items,lastPage,hasNext:/rel="next"/i.test(link)};
     };
-    const collectRange=async(kind,startAt,endAt)=>{
-      const query=baseQuery+' '+kind+':>='+dateText(startAt)+' '+kind+':<'+dateText(endAt),first=await fetchPage(query,1),count=Number(first.total_count)||0;
-      if(count>1000){
-        if(endAt-startAt<=day){const error=new Error('MY_ISSUES_DAY_LIMIT');error.code='MY_ISSUES_DAY_LIMIT';throw error}
-        const midpoint=startAt+Math.max(1,Math.floor((endAt-startAt)/(2*day)))*day;
-        if(midpoint>=endAt)throw new Error('Não foi possível dividir um intervalo de busca do GitHub.');
-        const [left,right]=await Promise.all([collectRange(kind,startAt,midpoint),collectRange(kind,midpoint,endAt)]);
-        return {items:left.items.concat(right.items),totalCount:left.totalCount+right.totalCount};
+    const fullScan=!syncRow?.initial_scan_done,since=fullScan?null:new Date(Math.max(0,Number(syncRow.last_synced_at)-60000)).toISOString();
+    const first=await fetchPage(1,since),githubIssues=first.items.slice();
+    if(first.lastPage&&first.lastPage>1){
+      for(let offset=2;offset<=first.lastPage;offset+=limit){
+        const pageNumbers=Array.from({length:Math.min(limit,first.lastPage-offset+1)},(_,index)=>offset+index);
+        const pages=await Promise.all(pageNumbers.map(page=>fetchPage(page,since)));for(const page of pages)githubIssues.push(...page.items);
       }
-      const pageCount=Math.ceil(count/100),rest=pageCount>1?await Promise.all(Array.from({length:pageCount-1},(_,index)=>fetchPage(query,index+2))):[];
-      return {items:first.items.concat(...rest.map(result=>result.items)),totalCount:count};
-    };
-    const scanAll=()=>collectRange('created',Date.UTC(2008,0,1),tomorrow);
-    let scan,fullScan=!syncRow?.initial_scan_done;
-    if(fullScan)scan=await scanAll();
-    else{
-      const from=Math.max(Date.UTC(2008,0,1),utcStart(Number(syncRow.last_synced_at))-day);
-      try{scan=await collectRange('updated',from,tomorrow)}catch(error){if(error?.code!=='MY_ISSUES_DAY_LIMIT')throw error;scan=await scanAll();fullScan=true}
+    }else if(first.hasNext||first.items.length===100){
+      for(let pageNumber=2;;pageNumber++){const page=await fetchPage(pageNumber,since);githubIssues.push(...page.items);if(!page.hasNext&&page.items.length<100)break}
     }
     const unique=new Map();
-    for(const item of scan.items){
+    for(const item of githubIssues){
       if(item.pull_request||item.user?.login?.toLowerCase()!==login.toLowerCase()||!Number.isSafeInteger(item.number))continue;
       let issueUrl;try{issueUrl=new URL(item.html_url)}catch{continue}
       const match=issueUrl.origin==='https://github.com'&&issueUrl.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)$/i);
@@ -466,7 +460,7 @@ async function route(request, env) {
     const changed=[...unique.values()];
     if(!cacheAvailable){
       for(let offset=0;offset<changed.length;offset+=100){const batch=changed.slice(offset,offset+100);await env.DB.batch(batch.map(({entry,createdAt})=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),createdAt)))}
-      return json({issues:changed.map(row=>row.entry),login,totalCount:fullScan?scan.totalCount:changed.length,limited:false,cached:false});
+      return json({issues:changed.map(row=>row.entry),login,totalCount:changed.length,limited:false,cached:false});
     }
     const writes=[];
     for(const {entry,createdAt,updatedAt} of changed){
