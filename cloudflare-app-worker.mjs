@@ -417,9 +417,13 @@ async function route(request, env) {
     if(action[1]==='projects'&&method==='POST'){const body=await readBody(request),issue=await readEditableIssue(ref,connection,githubApi),projects=await addIssueProjects(connection,issue.nodeId,body,await githubOptions(env,userId),githubGraphql);let warning='';try{const previous=JSON.parse(row.entry).projects||[],ids=new Set(projects.map(p=>p.id)),merged=[...previous.filter(p=>!ids.has(p.id)),...projects];await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.projects',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(merged),userId,ref.repository,ref.number).run()}catch{warning='Projetos processados no GitHub, mas o histórico não pôde ser sincronizado.'}return json({projects,warning})}
     throw fail('Operação não encontrada.',404);
   }
-  if(path==='/api/history/issue'&&['GET','PATCH'].includes(method)){
+  if(path==='/api/history/issue'&&['GET','PATCH','DELETE'].includes(method)){
     const ref=issueReference(url.searchParams),row=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).first();
     if(!row)throw fail('Issue não encontrada no histórico da sua conta.',404);
+    if(method==='DELETE'){
+      await env.DB.prepare('DELETE FROM issue_history WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).run();
+      return json({ok:true});
+    }
     const connection=await githubConnection(env,userId);
     if(method==='GET')return json({issue:await readEditableIssue(ref,connection,githubApi)});
     const issue=await updateExistingIssue(ref,connection,await readBody(request,110000),githubApi);let warning='';
