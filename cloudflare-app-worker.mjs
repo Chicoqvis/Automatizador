@@ -252,7 +252,7 @@ async function createGithubIssue(env, body, userId) {
   if (!response.ok) throw Object.assign(fail(await githubError(response), response.status === 401 || response.status === 403 || response.status === 404 ? response.status : 502),{creationRejected:response.status>=400&&response.status<500});
   const issue = await response.json();
   if(env.usage)env.usage.issuesCreated++;
-  const result = { number: issue.number, title: issue.title, url: issue.html_url, repository: connection.owner + "/" + connection.repo, githubUser: connection.githubUser || "", labels: (issue.labels || []).map((label) => label.name) };
+  const result = { number: issue.number, title: issue.title, url: issue.html_url, repository: connection.owner + "/" + connection.repo, labels: (issue.labels || []).map((label) => label.name) };
   result.issueState=issue.state==='closed'?'closed':'open';result.stateCheckedAt=Date.now();
   if(typeof body._onCreated==='function')await body._onCreated(result);
   const missing = labels.filter((label) => !result.labels.includes(label));
@@ -476,19 +476,6 @@ async function route(request, env) {
     const authorize = new URL("https://github.com/login/oauth/authorize");
     authorize.searchParams.set("client_id", env.GITHUB_APP_CLIENT_ID); authorize.searchParams.set("redirect_uri", env.GITHUB_APP_CALLBACK_URL); authorize.searchParams.set("state", state);
     return Response.redirect(authorize.toString(), 302);
-  }
-  if (path === "/api/admin/issue-history" && method === "GET") {
-    if (session.user.role !== "admin") throw fail("Somente administradores podem consultar o histórico de aberturas.", 403);
-    const { results } = await env.DB.prepare(`SELECT o.result,o.started_at,u.username,
-      COALESCE(NULLIF(json_extract(o.result,'$.githubUser'),''),NULLIF((SELECT github_user FROM saved_repositories r WHERE r.user_id=o.user_id AND lower(r.repository)=lower(json_extract(o.result,'$.repository')) LIMIT 1),''),NULLIF((SELECT github_user FROM github_connections c WHERE c.user_id=o.user_id AND lower(c.owner || '/' || c.repo)=lower(json_extract(o.result,'$.repository')) LIMIT 1),''),NULLIF((SELECT login FROM github_identities g WHERE g.user_id=o.user_id LIMIT 1),''),'') AS github_user
-      FROM issue_operations o JOIN users u ON u.id=o.user_id
-      WHERE o.state='done' AND json_valid(o.result) AND json_extract(o.result,'$.number') IS NOT NULL
-        AND COALESCE(json_extract(o.result,'$.url'),'') NOT LIKE '%#issuecomment-%'
-      ORDER BY o.started_at DESC LIMIT 500`).all();
-    return json({ issues: results.map((row) => {
-      const entry = JSON.parse(row.result);
-      return { username: row.username, githubUser: entry.githubUser || row.github_user || "", repository: entry.repository || "", number: entry.number, title: entry.title || "", url: entry.url || "", createdAt: entry.createdAt || row.started_at };
-    }) });
   }
   if (path === "/api/admin/users" && method === "GET") {
     if (session.user.role !== "admin") throw fail("Somente administradores podem gerenciar contas.", 403);
