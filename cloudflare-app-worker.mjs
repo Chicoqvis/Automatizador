@@ -176,6 +176,15 @@ async function githubConnection(env, userId) {
   }
   return { owner: row.owner, repo: row.repo, token, repositoryUrl: row.repository_url, githubUser: row.github_user || "" };
 }
+async function githubConnectionForRepository(env,userId,repository) {
+  const match=typeof repository==='string'&&repository.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+  if(!match)throw fail('Repositório GitHub inválido.');
+  const [owner,repo]=match.slice(1),connection=await githubConnection(env,userId),identity=await githubIdentity(env,userId).catch(()=>null);
+  if(connection&&(connection.owner+'/'+connection.repo).toLowerCase()===repository.toLowerCase())return connection;
+  const candidates=[identity?.token,connection?.token].filter((token,index,array)=>token&&array.indexOf(token)===index);
+  for(const token of candidates){const response=await githubApi('/repos/'+encodeURIComponent(owner)+'/'+encodeURIComponent(repo),token);if(response.ok){const data=await response.json().catch(()=>({}));return {owner,repo,token,repositoryUrl:data.html_url||'https://github.com/'+owner+'/'+repo,githubUser:identity?.login||connection?.githubUser||''}}}
+  throw fail('A conta conectada não tem acesso ao repositório '+repository+'. Confira o acesso ou conecte uma conta GitHub com permissão para esse repositório.',403);
+}
 async function connectGithub(env, body, userId) {
   const target = clean(body.repository);
   const suppliedToken = clean(body.token);
@@ -209,8 +218,8 @@ async function githubGraphql(connection, query, variables) {
   if (!response.ok || data.errors?.length) throw fail(data.errors?.map((item) => item.message).join("; ") || data.message || "GitHub não permitiu acessar os projetos.", response.status || 403);
   return data.data;
 }
-async function githubOptions(env, userId) {
-  const connection = await githubConnection(env, userId);
+async function githubOptions(env, userId, repository = "") {
+  const connection = repository ? await githubConnectionForRepository(env,userId,repository) : await githubConnection(env, userId);
   if (!connection) throw fail("Conecte um repositório GitHub primeiro.", 409);
   const labelsPromise = githubApi(`/repos/${encodeURIComponent(connection.owner)}/${encodeURIComponent(connection.repo)}/labels?per_page=100`, connection.token);
   const projectsPromise = githubGraphql(connection, PROJECT_QUERY, { owner: connection.owner, repo: connection.repo });
@@ -262,7 +271,7 @@ async function createGithubIssue(env, body, userId) {
     else result.labelsError = await githubError(lr);
   }
   const choices=projectSelections(body);
-  if(choices.length){try{result.projects=await addIssueProjects(connection,issue.node_id,body,await githubOptions(env,userId),githubGraphql);const success=result.projects.filter(p=>!p.error);if(success.length){result.project=success[0].title;result.status=success[0].status}const failed=result.projects.filter(p=>p.error);if(failed.length)result.projectError=failed.map(p=>p.title+': '+p.error).join('; ')}catch(error){result.projectError=error.message||'Falha ao incluir nos projetos.'}}
+  if(choices.length){try{result.projects=await addIssueProjects(connection,issue.node_id,body,await githubOptions(env,userId,ref.repository),githubGraphql);const success=result.projects.filter(p=>!p.error);if(success.length){result.project=success[0].title;result.status=success[0].status}const failed=result.projects.filter(p=>p.error);if(failed.length)result.projectError=failed.map(p=>p.title+': '+p.error).join('; ')}catch(error){result.projectError=error.message||'Falha ao incluir nos projetos.'}}
 
   return result;
 }
@@ -402,16 +411,42 @@ async function route(request, env) {
   }
   if(path==="/api/memory"&&method==="DELETE"){await env.DB.prepare("DELETE FROM account_memory WHERE user_id=?").bind(userId).run();return json({ok:true})}
   if(path==='/api/activities'&&method==='GET'){const [history,operations,mentions]=await Promise.all([env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all(),env.DB.prepare("SELECT state,result,started_at FROM issue_operations WHERE user_id=? AND state='done' AND json_extract(result,'$.url') LIKE '%#issuecomment-%' ORDER BY started_at DESC LIMIT 500").bind(userId).all(),d1Notifications(env.DB,userId).pendingList()]);return json({items:accountActivities(history.results.map(x=>JSON.parse(x.entry)),operations.results,mentions)})}
+  if(path==='/api/github/my-issues'&&method==='GET'){
+    const connection=await githubConnection(env,userId),identity=await githubIdentity(env,userId).catch(()=>null),token=connection?.token||identity?.token;
+    if(!token)throw fail('Conecte sua conta GitHub para consultar suas issues.',409);
+    let login=identity?.login||connection?.githubUser||'';
+    if(!login){const profile=await githubApi('/user',token);if(!profile.ok)throw fail('Não foi possível identificar a conta GitHub conectada.',profile.status);login=(await profile.json()).login||''}
+    if(!/^[A-Za-z0-9-]{1,39}$/.test(login))throw fail('Não foi possível identificar o autor da conta GitHub.',502);
+    const issues=[],totalPages=10;let totalCount=0;
+    for(let page=1;page<=totalPages;page++){
+      const query='author:'+login+' is:issue';
+      const response=await githubApi('/search/issues?q='+encodeURIComponent(query)+'&per_page=100&page='+page+'&sort=created&order=desc',token);
+      if(!response.ok)throw fail('Não foi possível consultar as issues criadas por '+login+' no GitHub. '+await githubError(response),response.status);
+      const data=await response.json();if(!Array.isArray(data.items))throw fail('GitHub retornou uma lista de issues inválida.',502);
+      totalCount=Number(data.total_count)||0;
+      for(const item of data.items){
+        if(item.pull_request||item.user?.login?.toLowerCase()!==login.toLowerCase()||!Number.isSafeInteger(item.number))continue;
+        let url;try{url=new URL(item.html_url)}catch{continue}
+        const match=url.origin==='https://github.com'&&url.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)$/i);
+        if(!match||Number(match[2])!==item.number)continue;
+        const createdAt=Date.parse(item.created_at);if(!Number.isFinite(createdAt))continue;
+        issues.push(validateHistoryEntry({number:item.number,title:item.title,url:url.href,repository:match[1],createdAt,labels:(item.labels||[]).map(label=>typeof label==='string'?label:label.name).filter(Boolean),issueState:item.state==='closed'?'closed':'open',stateCheckedAt:Date.now(),stateCheckError:'',projects:[]}));
+      }
+      if(data.items.length<100||page*100>=Math.min(totalCount,1000))break;
+    }
+    for(let offset=0;offset<issues.length;offset+=100){const batch=issues.slice(offset,offset+100);await env.DB.batch(batch.map(entry=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt)))}
+    return json({issues,login,totalCount,limited:totalCount>1000});
+  }
   if(path==='/api/history'&&method==='GET'){const {results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();return json({issues:results.map(row=>JSON.parse(row.entry))})}
   const action=path.match(/^\/api\/history\/(labels|comments|projects|comment-draft)$/);
   if(action){
     const ref=issueReference(url.searchParams),row=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).first();if(!row)throw fail('Issue não encontrada no histórico da sua conta.',404);
-    const connection=await githubConnection(env,userId);
+    const connection=await githubConnectionForRepository(env,userId,ref.repository);
     if(action[1]==='comment-draft'&&method==='POST')return json(await suggestComment(ref,connection,await readBody(request),githubApi,async(messages,schema)=>{
  const model=env.CLOUDFLARE_AI_MODEL||MODEL_DEFAULT;if(env.usage)env.usage.aiCalls++;try{const result=await env.AI.run(model,{messages,temperature:0.2,max_tokens:1200,response_format:{type:'json_schema',json_schema:schema}});if(env.usage){const measured=measuredAiUsage(result,model);env.usage.neurons+=measured.neurons||0;env.usage.aiUnknown+=measured.aiUnknown||0}return result}catch(error){const quota=dailyAiQuotaError(error);if(quota&&env.usage)env.usage.aiExhausted=1;else if(env.usage)env.usage.aiUnknown++;throw quota||fail('Não foi possível gerar a sugestão de comentário.',502)}
  }));
     if(action[1]==='labels'&&method==='GET'){const issue=await readEditableIssue(ref,connection,githubApi);return json({labels:issue.labels,labelsRevision:await labelsRevision(issue.labels)})}
-    if(action[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(request),githubApi,await githubOptions(env,userId));let warning='';try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.labels',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(result.labels),userId,ref.repository,ref.number).run()}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return json({...result,warning})}
+    if(action[1]==='labels'&&method==='PUT'){const result=await setIssueLabels(ref,connection,await readBody(request),githubApi,await githubOptions(env,userId,ref.repository));let warning='';try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.labels',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(result.labels),userId,ref.repository,ref.number).run()}catch{warning='Labels atualizadas no GitHub, mas o histórico não pôde ser sincronizado.'}return json({...result,warning})}
     if(action[1]==='comments'&&['PATCH','DELETE'].includes(method)){await readEditableIssue(ref,connection,githubApi);const body=await readBody(request);await verifyCommentAccount(body,connection,githubApi);return json(await changeIssueComment(ref,connection,body,method,githubApi))}
     if(action[1]==='comments'&&['GET','POST'].includes(method)){await readEditableIssue(ref,connection,githubApi);if(method==='GET'){const data=await listIssueComments(ref,connection,githubApi,Number(url.searchParams.get('page')||1));const focus=url.searchParams.get('focus');return json({comments:data.comments,hasMore:data.hasMore,...(focus?{focusComment:await readIssueComment(ref,connection,Number(focus),githubApi)}:{})})}const body=await readBody(request);await verifyCommentAccount(body,connection,githubApi);return json({comment:await sendIssueComment(ref,connection,body,githubApi,d1OperationStore(env.DB,userId))},201)}
     if(action[1]==='projects'&&method==='POST'){const body=await readBody(request),issue=await readEditableIssue(ref,connection,githubApi),projects=await addIssueProjects(connection,issue.nodeId,body,await githubOptions(env,userId),githubGraphql);let warning='';try{const previous=JSON.parse(row.entry).projects||[],ids=new Set(projects.map(p=>p.id)),merged=[...previous.filter(p=>!ids.has(p.id)),...projects];await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.projects',json(?)) WHERE user_id=? AND repository=? AND number=?").bind(JSON.stringify(merged),userId,ref.repository,ref.number).run()}catch{warning='Projetos processados no GitHub, mas o histórico não pôde ser sincronizado.'}return json({projects,warning})}
@@ -424,7 +459,7 @@ async function route(request, env) {
       await env.DB.prepare('DELETE FROM issue_history WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).run();
       return json({ok:true});
     }
-    const connection=await githubConnection(env,userId);
+    const connection=await githubConnectionForRepository(env,userId,ref.repository);
     if(method==='GET')return json({issue:await readEditableIssue(ref,connection,githubApi)});
     const issue=await updateExistingIssue(ref,connection,await readBody(request,110000),githubApi);let warning='';
     try{await env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.title',?,'$.issueState',?,'$.stateCheckedAt',?,'$.stateCheckError','') WHERE user_id=? AND repository=? AND number=?").bind(issue.title,issue.issueState,issue.stateCheckedAt,userId,ref.repository,ref.number).run();const memory=await env.DB.prepare('SELECT content FROM account_memory WHERE user_id=? AND repository=? AND number=?').bind(userId,ref.repository,ref.number).first();if(memory)await env.DB.prepare('UPDATE account_memory SET title=?,content=? WHERE user_id=? AND repository=? AND number=?').bind(issue.title,revisedMemoryContent(memory.content,issue.body),userId,ref.repository,ref.number).run()}catch{warning='A issue foi atualizada no GitHub, mas não foi possível atualizar todas as informações salvas na ferramenta.'}
@@ -437,9 +472,10 @@ async function route(request, env) {
   if(path==='/api/history/statuses'&&method==='POST'){
     const body=await readBody(request),{results}=await env.DB.prepare('SELECT entry FROM issue_history WHERE user_id=? ORDER BY created_at DESC LIMIT 500').bind(userId).all();
     const entries=historyStatusTargets(body,results.map(row=>JSON.parse(row.entry)));
-    const report=await refreshIssueStates(entries,await githubConnection(env,userId),githubApi);
-    if(report.entries.length)await env.DB.batch(report.entries.map(entry=>env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.issueState',?,'$.stateCheckedAt',?,'$.stateCheckError',?) WHERE user_id=? AND repository=? AND number=? AND COALESCE(json_extract(entry,'$.stateCheckedAt'),0)<=?").bind(entry.issueState||'unknown',entry.stateCheckedAt||0,entry.stateCheckError||'',userId,entry.repository,entry.number,entry.stateCheckedAt||0)));
-    return json({updated:report.updated,failed:report.failed,skipped:report.skipped});
+    const groups=new Map();for(const entry of entries){const key=entry.repository.toLowerCase();if(!groups.has(key))groups.set(key,[]);groups.get(key).push(entry)}
+    const reports=await Promise.all([...groups.entries()].map(async([repository,group])=>{try{return await refreshIssueStates(group,await githubConnectionForRepository(env,userId,repository),githubApi)}catch(error){return {entries:group.map(entry=>({...entry,stateCheckError:(error.message||'Falha ao consultar o repositório.').slice(0,200)})),updated:0,failed:group.length,skipped:0}}}));
+    const updatedEntries=reports.flatMap(report=>report.entries);if(updatedEntries.length)await env.DB.batch(updatedEntries.map(entry=>env.DB.prepare("UPDATE issue_history SET entry=json_set(entry,'$.issueState',?,'$.stateCheckedAt',?,'$.stateCheckError',?) WHERE user_id=? AND repository=? AND number=? AND COALESCE(json_extract(entry,'$.stateCheckedAt'),0)<=?").bind(entry.issueState||'unknown',entry.stateCheckedAt||0,entry.stateCheckError||'',userId,entry.repository,entry.number,entry.stateCheckedAt||0)));
+    return json({updated:reports.reduce((sum,report)=>sum+report.updated,0),failed:reports.reduce((sum,report)=>sum+report.failed,0),skipped:reports.reduce((sum,report)=>sum+report.skipped,0)});
   }
   if(path==='/api/history'&&method==='POST'){
     const body=await readBody(request,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw fail('Envie até 200 registros.');
@@ -466,8 +502,8 @@ async function route(request, env) {
   }
   if(path==='/api/github/similar'&&method==='GET')return json(await findSimilarIssues(await githubConnection(env,userId),url.searchParams.get('title'),githubApi));
   if(path === "/api/github/attachments" && method === "POST") {
-    const connection=await githubConnection(env,userId);if(!connection)throw fail("Conecte um repositório GitHub primeiro.",409);
-    if(url.searchParams.get('repository')&&(!connection||(connection.owner+'/'+connection.repo).toLowerCase()!==url.searchParams.get('repository').toLowerCase()))throw fail('Conecte o repositório desta issue antes de anexar.',409);return json(await uploadGithubAttachment(connection,url.searchParams.get("name"),await readAttachment(request.body)),201);
+    const repository=url.searchParams.get('repository')||'',connection=repository?await githubConnectionForRepository(env,userId,repository):await githubConnection(env,userId);if(!connection)throw fail("Conecte um repositório GitHub primeiro.",409);
+    return json(await uploadGithubAttachment(connection,url.searchParams.get("name"),await readAttachment(request.body)),201);
   }
   if (path === "/api/github/oauth/status" && method === "GET") {
     const identity = await env.DB.prepare("SELECT login FROM github_identities WHERE user_id=?").bind(userId).first();
@@ -560,7 +596,7 @@ async function route(request, env) {
     const response=await githubApi(`/repos/${row.owner}/${row.repo}`,token);if(!response.ok)throw fail('O acesso salvo expirou ou não permite acessar este repositório. Conecte-o novamente.',403);
     await env.DB.prepare('INSERT OR REPLACE INTO github_connections(user_id,owner,repo,repository_url,github_user,token_cipher,updated_at) VALUES(?,?,?,?,?,?,?)').bind(userId,row.owner,row.repo,row.repository_url,row.github_user,await encryptSecret(token,env),Date.now()).run();return json({connected:true,repository:row.repository,repositoryUrl:row.repository_url,githubUser:row.github_user});
   }
-  if (path === "/api/github/options" && method === "GET") return json(await githubOptions(env, userId));
+  if (path === "/api/github/options" && method === "GET") return json(await githubOptions(env, userId,url.searchParams.get('repository')||''));
   if (path === "/api/github/similar" && method === "GET") {
     const title = clean(url.searchParams.get("title"));
     const connection = await githubConnection(env, userId);
