@@ -1,4 +1,4 @@
-import {pageRequest,trpcData} from './protocol.js';
+import {pageRequest,trpcData,candidates} from './protocol.js';
 export function isBusinessApproval(phase){return phase?.currentPhase==='business_approved'&&!['completed','done','skipped','cancelled','canceled'].includes(phase.phaseStatus)}
 export function joinProcesses(issues,phases){const map=new Map(phases.map(x=>[x.issueId,x]));return issues.map(issue=>({...issue,process:map.get(issue.id)||null}))}
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13,8 +13,18 @@ export function processRead(workspace,action,value,request=pageRequest,pause=wai
  }};return new Promise((resolve,reject)=>{const job={run,resolve,reject};priority?queue.unshift(job):queue.push(job);runNext()});
 }
 export async function loadIssueProcess(workspace,ref,request=pageRequest,pause=wait,knownRow=null){
- const data=knownRow?{issues:[knownRow]}:await processRead(workspace,'issue.list',ref.number,request,pause,true),issues=Array.isArray(data?.issues)?data.issues:[];
- const row=issues.find(x=>Number(x.number)===ref.number&&String(x.githubUrl||'').toLowerCase()==='https://github.com/'+ref.repository.toLowerCase()+'/issues/'+ref.number);
+ const data=knownRow?{issues:[knownRow]}:await processRead(workspace,'issue.list',ref.number,request,pause,true);
+ const direct=(Array.isArray(data?.issues)?data.issues:[]).find(x=>Number(x.number)===ref.number&&String(x.githubUrl||'').toLowerCase()==='https://github.com/'+ref.repository.toLowerCase()+'/issues/'+ref.number);
+ let row=direct||null;
+ if(!row){
+  const matches=candidates(data,ref.number);
+  for(const candidate of matches){
+   if(candidate.repository&&candidate.repository.toLowerCase()!==ref.repository.toLowerCase())continue;
+   const detail=await processRead(workspace,'issue.detail',candidate.id,request,pause,true),url=new URL(detail?.githubUrl||'');
+   const match=url.origin==='https://github.com'&&url.pathname.match(/^\\/([^/]+\\/[^/]+)\\/issues\\/(\\d+)$/i);
+   if(detail?.id===candidate.id&&match&&match[1].toLowerCase()===ref.repository.toLowerCase()&&Number(match[2])===ref.number){row={...candidate,...detail,repository:ref.repository,githubUrl:url.href};break}
+  }
+ }
  if(!row)throw Error('Esta issue não foi encontrada no workspace selecionado.');
  const phases=await processRead(workspace,'process.lifecycle.phaseSummaries',[row.id],request,pause,true);if(!Array.isArray(phases))throw Error('Resposta de fases inválida.');
  return {workspace,checkedAt:Date.now(),items:joinProcesses([row],phases),individual:true};
