@@ -9,6 +9,8 @@ APP_BASE_URL = "https://automacao-issues-ai.automacao-issue-chico.workers.dev"
 [ai]
 binding = "AI"
 
+# Hosted frontend source of truth: public/index.html and assets in ./public.
+# Node local mode serves the separate root index.html.
 [assets]
 directory = "./public"
 binding = "ASSETS"
