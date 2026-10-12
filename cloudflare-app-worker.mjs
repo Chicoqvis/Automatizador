@@ -430,7 +430,7 @@ async function route(request, env) {
         const match=url.origin==='https://github.com'&&url.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(\d+)$/i);
         if(!match||Number(match[2])!==item.number)continue;
         const createdAt=Date.parse(item.created_at);if(!Number.isFinite(createdAt))continue;
-        issues.push(validateHistoryEntry({number:item.number,title:item.title,url:url.href,repository:match[1],createdAt,labels:(item.labels||[]).map(label=>typeof label==='string'?label:label.name).filter(Boolean),issueState:item.state==='closed'?'closed':'open',stateCheckedAt:Date.now(),stateCheckError:'',projects:[]}));
+        issues.push({...validateHistoryEntry({number:item.number,title:item.title,url:url.href,repository:match[1],createdAt,labels:(item.labels||[]).map(label=>typeof label==='string'?label:label.name).filter(Boolean),issueState:item.state==='closed'?'closed':'open',stateCheckedAt:Date.now(),stateCheckError:'',projects:[]}),source:'github-author'});
       }
       if(data.items.length<100||page*100>=Math.min(totalCount,1000))break;
     }
@@ -481,7 +481,7 @@ async function route(request, env) {
     const body=await readBody(request,110000);if(!Array.isArray(body.issues)||body.issues.length>200)throw fail('Envie até 200 registros.');
     const entries=body.issues.map(item=>validateHistoryEntry({...item,issueState:'unknown',stateCheckedAt:0,stateCheckError:''}));if(entries.length)await env.DB.batch(entries.map(entry=>env.DB.prepare('INSERT OR IGNORE INTO issue_history(user_id,repository,number,entry,created_at) VALUES(?,?,?,?,?)').bind(userId,entry.repository,entry.number,JSON.stringify(entry),entry.createdAt)));return json({ok:true});
   }
-  if(path==='/api/history'&&method==='DELETE'){await env.DB.prepare('DELETE FROM issue_history WHERE user_id=?').bind(userId).run();return json({ok:true})}
+  if(path==='/api/history'&&method==='DELETE'){await env.DB.prepare("DELETE FROM issue_history WHERE user_id=? AND COALESCE(json_extract(entry,'$.source'),'')<>'github-author'").bind(userId).run();return json({ok:true})}
   if(path==='/api/drafts'&&method==='GET'){
     const {results}=await env.DB.prepare('SELECT id,name,revision,updated_at FROM saved_drafts WHERE user_id=? ORDER BY updated_at DESC').bind(userId).all();return json({drafts:results});
   }
