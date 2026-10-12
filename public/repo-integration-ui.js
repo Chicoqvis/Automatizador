@@ -1,6 +1,6 @@
 (()=>{
  const button=document.getElementById('integrateRepoSprint');if(!button)return;
- const version='0.4.7',downloadURL='/public/downloads/reposprint-extension.zip',folderName='reposprint-'+version;
+ const version='0.4.8',downloadURL='/public/downloads/reposprint-extension.zip',folderName='reposprint-'+version;
  const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el};
  function download(){const link=node('a');link.href=downloadURL;link.download='reposprint-extension.zip';document.body.append(link);link.click();link.remove()}
  const state=node('div');state.id='repoIntegrationState';state.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;font-size:11px';state.setAttribute('aria-live','polite');const label=node('span'),help=node('a');help.className='btn repo-review-link';help.style.cssText='height:30px;padding:0 10px;font-size:11px';help.target='_blank';help.rel='noopener noreferrer';state.append(label,help);button.parentElement.after(state);

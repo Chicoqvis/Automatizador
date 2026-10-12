@@ -278,3 +278,9 @@ O pacote público public/downloads/reposprint-extension.zip contém somente os a
 ### Estado e continuidade do RepoSprint
 
 A extensão 0.4.7 permite verificar a conexão autenticada e distinguir sessão expirada, permissão recusada e pausa temporária. Atualizações parciais preservam a lista anterior; os painéis mantêm filtros, rascunhos e rolagem. Devoluções confirmadas atualizam a fase e a lista de aprovação. Se o envio foi recebido mas a nova fase ainda não foi confirmada, a ferramenta consulta a fase em segundo plano sem repetir a escrita. Atualize/recarregue a extensão e a ferramenta após esta versão.
+
+### Revisão RepoSprint 0.4.8
+
+Responder inclui descrição e anexos da issue, aprovação e solicitação de ajuste com confirmação e verificação das permissões e requisitos atuais. As escritas não têm repetição automática; a fase exibida vem da consulta posterior, inclusive quando ainda depende de outros aprovadores. Atualize a extensão para 0.4.8.
+
+A seleção de aprovações mostra total, espera superior a três dias e superior a sete dias. Mudanças recentes e os destaques no histórico usam um registro local das mudanças observadas nas consultas; a primeira consulta cria a referência e não importa o histórico completo do RepoSprint.
