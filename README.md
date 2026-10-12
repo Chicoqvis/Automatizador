@@ -5,6 +5,21 @@ Há duas versões independentes:
 - **Local:** servidor Node.js e Ollama; continua funcionando com `node server.mjs`.
 - **Pública:** Cloudflare Workers com Workers AI e D1 para usuários, sessões e conexões GitHub.
 
+### Fonte da interface por ambiente
+
+A interface publicada pelo Cloudflare tem uma única fonte: `public/index.html` e os arquivos em `public/`. O Wrangler publica essa pasta conforme `wrangler.toml`. A versão local é separada e o servidor Node serve `index.html` da raiz porque usa outro fluxo de autenticação e APIs. Ao alterar a versão pública, edite `public/index.html`; não copie a página local por cima dela.
+
+### Cache e sincronização de “Minhas task's”
+
+A migration `migrations/0013_github_my_issues_cache.sql` cria o cache do servidor. Antes de publicar uma alteração de schema, aplique as migrations remotas:
+
+```powershell
+npx.cmd wrangler d1 migrations apply automatizador-db --remote
+npx.cmd wrangler deploy
+```
+
+Sem a migration, a interface continua funcionando com a busca direta do GitHub; o cache incremental só fica ativo depois da aplicação.
+
 ## Execução local com Ollama
 
 Requer Node.js e Ollama. O modelo padrão é `qwen3:1.7b`.
