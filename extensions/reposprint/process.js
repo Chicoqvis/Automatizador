@@ -20,9 +20,8 @@ export async function loadIssueProcess(workspace,ref,request=pageRequest,pause=w
   const matches=candidates(data,ref.number);
   for(const candidate of matches){
    if(candidate.repository&&candidate.repository.toLowerCase()!==ref.repository.toLowerCase())continue;
-   const detail=await processRead(workspace,'issue.detail',candidate.id,request,pause,true),url=new URL(detail?.githubUrl||'');
-   const match=url.origin==='https://github.com'&&url.pathname.match(/^\\/([^/]+\\/[^/]+)\\/issues\\/(\\d+)$/i);
-   if(detail?.id===candidate.id&&match&&match[1].toLowerCase()===ref.repository.toLowerCase()&&Number(match[2])===ref.number){row={...candidate,...detail,repository:ref.repository,githubUrl:url.href};break}
+   const detail=await processRead(workspace,'issue.detail',candidate.id,request,pause,true),url=new URL(detail?.githubUrl||''),parts=url.pathname.split('/'),repository=parts.length===5?parts[1]+'/'+parts[2]:'';
+   if(detail?.id===candidate.id&&url.origin==='https://github.com'&&repository.toLowerCase()===ref.repository.toLowerCase()&&parts[3]==='issues'&&Number(parts[4])===ref.number){row={...candidate,...detail,repository:ref.repository,githubUrl:url.href};break}
   }
  }
  if(!row)throw Error('Esta issue não foi encontrada no workspace selecionado.');
