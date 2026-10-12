@@ -283,4 +283,4 @@ A extensão 0.4.7 permite verificar a conexão autenticada e distinguir sessão 
 
 Responder inclui descrição e anexos da issue, aprovação e solicitação de ajuste com confirmação e verificação das permissões e requisitos atuais. As escritas não têm repetição automática; a fase exibida vem da consulta posterior, inclusive quando ainda depende de outros aprovadores. Atualize a extensão para 0.4.8.
 
-A seleção de aprovações mostra total, espera superior a três dias e superior a sete dias. Mudanças recentes e os destaques no histórico usam um registro local das mudanças observadas nas consultas; a primeira consulta cria a referência e não importa o histórico completo do RepoSprint.
+A seleção de aprovações mostra total, espera superior a três dias e superior a sete dias. A opção Mudanças recentes foi removida. No histórico, use Abrir pelo número para informar uma issue e seu repositório; digitar #4288 e pressionar Enter na busca abre o processo no repositório selecionado. A consulta individual também funciona para issues ausentes do histórico.
