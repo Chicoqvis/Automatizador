@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Automatizador · RepoSprint",
-  "version": "0.5.12",
+  "version": "0.5.13",
   "description": "Busca issues e permite adicioná-las ao backlog usando o RepoSprint aberto no navegador.",
   "permissions": [
     "storage"
