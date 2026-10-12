@@ -557,6 +557,12 @@ async function route(request, env) {
     await env.DB.prepare('INSERT OR REPLACE INTO github_connections(user_id,owner,repo,repository_url,github_user,token_cipher,updated_at) VALUES(?,?,?,?,?,?,?)').bind(userId,row.owner,row.repo,row.repository_url,row.github_user,await encryptSecret(token,env),Date.now()).run();return json({connected:true,repository:row.repository,repositoryUrl:row.repository_url,githubUser:row.github_user});
   }
   if (path === "/api/github/options" && method === "GET") return json(await githubOptions(env, userId));
+  if (path === "/api/github/similar" && method === "GET") {
+    const title = clean(url.searchParams.get("title"));
+    const connection = await githubConnection(env, userId);
+    if (!connection) throw fail("Conecte um repositório GitHub primeiro.", 409);
+    return json(await findSimilarIssues(connection, title, (pathname, token) => githubApi(pathname, token)));
+  }
   if (path === "/api/github/disconnect" && method === "POST") {
     await env.DB.prepare("DELETE FROM github_connections WHERE user_id=?").bind(userId).run();
     return json({ connected: false });
